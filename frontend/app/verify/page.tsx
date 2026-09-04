@@ -72,10 +72,11 @@ function VerifyContent() {
     ])
       .then(([doc, resData]) => {
         setActiveDoc(doc);
-        setResults(resData.results || []);
+        const items = resData.results || (resData as any).fields || [];
+        setResults(items);
 
         const initialEdits: Record<string, string> = {};
-        (resData.results || []).forEach((r) => {
+        items.forEach((r: any) => {
           initialEdits[r.field_name] = r.field_value || "";
         });
         setEditedValues(initialEdits);

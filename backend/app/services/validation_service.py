@@ -28,7 +28,9 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ---------------------------------------------------------------------------
 
-_MANDATORY_FIELDS = {"survey_number", "village", "taluka", "district"}
+# No globally mandatory fields — validation depends on document type and what
+# fields were actually discovered.  Missing optional fields are NOT errors.
+_MANDATORY_FIELDS: set[str] = set()  # Empty by design
 _DATE_PATTERNS = [
     "%d-%m-%Y",
     "%d/%m/%Y",
@@ -97,51 +99,41 @@ def _validate_field(ef: ExtractedField) -> FieldValidationResult:
             reason="Empty value",
         )
 
-    # Area must be positive
-    if name in {"area_hectares", "area_acres", "area_sqm"}:
+    # Area validation: apply to any field with 'area' in name or data_type='area'
+    data_type = getattr(ef, "data_type", "string")
+    canonical = getattr(ef, "canonical_key", None) or ""
+    
+    is_area = data_type == "area" or "area" in name.lower()
+    if is_area:
         num = _parse_number(value)
-        if num is None:
-            return FieldValidationResult(
-                field_name=name, field_value=value, is_valid=False,
-                reason="Non-numeric area value",
-            )
-        if num <= 0:
+        if num is not None and num <= 0:
             return FieldValidationResult(
                 field_name=name, field_value=value, is_valid=False,
                 reason=f"Area must be positive, got {num}",
             )
 
-    # Dates must be parseable and not in the future
-    if name in {"registration_date"}:
+    # Date validation: apply to any field with data_type='date' or 'date' in name
+    is_date = data_type == "date" or "date" in name.lower()
+    if is_date and value:
         parsed = _parse_date(value)
-        if parsed is None:
-            return FieldValidationResult(
-                field_name=name, field_value=value, is_valid=False,
-                reason=f"Unrecognised date format: {value!r}",
-            )
-        now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
-        if parsed > now:
-            return FieldValidationResult(
-                field_name=name, field_value=value, is_valid=False,
-                reason="Registration date is in the future",
-            )
+        if parsed:
+            now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
+            if parsed > now:
+                return FieldValidationResult(
+                    field_name=name, field_value=value, is_valid=False,
+                    reason="Date is in the future",
+                )
 
-    # Monetary values must be non-negative
-    if name in {"stamp_duty", "market_value"}:
+    # Currency validation: apply to data_type='currency' or financial terms
+    is_currency = data_type == "currency" or any(
+        kw in name.lower() for kw in ("duty", "amount", "price", "rent", "value")
+    )
+    if is_currency:
         num = _parse_number(value)
         if num is not None and num < 0:
             return FieldValidationResult(
                 field_name=name, field_value=value, is_valid=False,
                 reason=f"Monetary value cannot be negative: {num}",
-            )
-
-    # Survey/plot/document numbers: alphanumeric only
-    if name in {"survey_number", "plot_number", "document_number", "khata_number",
-                "mutation_number"}:
-        if not re.match(r"^[A-Z0-9/\-]+$", value.upper()):
-            return FieldValidationResult(
-                field_name=name, field_value=value, is_valid=False,
-                reason=f"Unexpected characters in {name}: {value!r}",
             )
 
     return FieldValidationResult(

@@ -26,8 +26,13 @@ TestSessionLocal = sessionmaker(
 
 @pytest.fixture(scope="session", autouse=True)
 def create_test_tables():
-    """Create all tables in the test SQLite DB before the test session."""
+    """Create all tables in the test SQLite DB before the test session.
+
+    Drops existing tables first so schema changes (new columns) are
+    always reflected in the test database.
+    """
     import app.models  # noqa: F401 — ensure all models are registered
+    Base.metadata.drop_all(bind=test_engine)
     Base.metadata.create_all(bind=test_engine)
     yield
     Base.metadata.drop_all(bind=test_engine)

@@ -195,29 +195,39 @@ def _get_model_and_processor():
 
             # Build processor from components to avoid transformers 5.x
             # fast-tokenizer serialization issue with TrOCR's RoBERTa tokenizer
-            logger.debug("TrOCR: loading ViTImageProcessor...")
-            img_processor = ViTImageProcessor.from_pretrained(
-                _MODEL_NAME,
-                local_files_only=_LOCAL_FILES,
-            )
-
-            logger.debug("TrOCR: loading RobertaTokenizer (slow)...")
-            tokenizer = RobertaTokenizer.from_pretrained(
-                _MODEL_NAME,
-                local_files_only=_LOCAL_FILES,
-            )
+            # Try local files first to avoid remote network latency if cached
+            try:
+                img_processor = ViTImageProcessor.from_pretrained(
+                    _MODEL_NAME,
+                    local_files_only=True,
+                )
+                tokenizer = RobertaTokenizer.from_pretrained(
+                    _MODEL_NAME,
+                    local_files_only=True,
+                )
+                _model = VisionEncoderDecoderModel.from_pretrained(
+                    _MODEL_NAME,
+                    local_files_only=True,
+                )
+            except Exception:
+                img_processor = ViTImageProcessor.from_pretrained(
+                    _MODEL_NAME,
+                    local_files_only=_LOCAL_FILES,
+                )
+                tokenizer = RobertaTokenizer.from_pretrained(
+                    _MODEL_NAME,
+                    local_files_only=_LOCAL_FILES,
+                )
+                _model = VisionEncoderDecoderModel.from_pretrained(
+                    _MODEL_NAME,
+                    local_files_only=_LOCAL_FILES,
+                )
 
             _processor = TrOCRProcessor(
                 image_processor=img_processor,
                 tokenizer=tokenizer,
             )
             logger.debug("TrOCR: processor assembled")
-
-            logger.debug("TrOCR: loading VisionEncoderDecoderModel...")
-            _model = VisionEncoderDecoderModel.from_pretrained(
-                _MODEL_NAME,
-                local_files_only=_LOCAL_FILES,
-            )
             _model.to(_DEVICE)
             _model.eval()
 

@@ -284,8 +284,8 @@ def process_text_multilingual(
     }
 
 
-def enrich_entity(entity: LandRecordEntity) -> LandRecordEntity:
-    """Enrich a LandRecordEntity with multilingual fields.
+def enrich_entity(entity: Any) -> Any:
+    """Enrich a LandRecordEntity or DynamicField with multilingual fields.
 
     Mutates the entity by assigning:
     - original_text
@@ -293,21 +293,33 @@ def enrich_entity(entity: LandRecordEntity) -> LandRecordEntity:
     - transliteration
     - translation
     """
-    # Use source_text or extracted_value as raw original text
-    raw_text = entity.original_text or entity.source_text or entity.extracted_value
+    raw_text = (
+        getattr(entity, "original_text", None)
+        or getattr(entity, "source_text", None)
+        or getattr(entity, "extracted_value", None)
+        or getattr(entity, "field_value", None)
+        or ""
+    )
+    entity_type = (
+        getattr(entity, "entity_type", None)
+        or getattr(entity, "canonical_key", None)
+        or getattr(entity, "field_name", "")
+    )
+    language = getattr(entity, "language", "en")
 
     processed = process_text_multilingual(
         text=raw_text,
-        entity_type=entity.entity_type,
-        language=entity.language,
+        entity_type=entity_type,
+        language=language,
     )
 
-    entity.original_text = processed["original_text"] or raw_text
-    entity.transliteration = processed["transliteration"] or ""
-    entity.translation = processed["translation"]
-    
-    # If normalized_text is set, update extracted_value if it was raw Indic digits
-    if processed["normalized_text"]:
+    if hasattr(entity, "original_text"):
+        entity.original_text = processed["original_text"] or raw_text
+    if hasattr(entity, "transliteration"):
+        entity.transliteration = processed["transliteration"] or ""
+    if hasattr(entity, "translation") and not getattr(entity, "translation", None):
+        entity.translation = processed["translation"]
+    if hasattr(entity, "normalized_text") and processed["normalized_text"]:
         entity.normalized_text = processed["normalized_text"]
 
     return entity

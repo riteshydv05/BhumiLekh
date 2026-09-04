@@ -640,13 +640,24 @@ class LayoutLMv3ProcessorService:
                 "Loading LayoutLMv3 processor and model (microsoft/layoutlmv3-base)..."
             )
 
-            self.processor = LayoutLMv3Processor.from_pretrained(
-                "microsoft/layoutlmv3-base",
-                apply_ocr=False,
-            )
-            self.model = LayoutLMv3ForTokenClassification.from_pretrained(
-                "microsoft/layoutlmv3-base"
-            )
+            try:
+                self.processor = LayoutLMv3Processor.from_pretrained(
+                    "microsoft/layoutlmv3-base",
+                    apply_ocr=False,
+                    local_files_only=True,
+                )
+                self.model = LayoutLMv3ForTokenClassification.from_pretrained(
+                    "microsoft/layoutlmv3-base",
+                    local_files_only=True,
+                )
+            except Exception:
+                self.processor = LayoutLMv3Processor.from_pretrained(
+                    "microsoft/layoutlmv3-base",
+                    apply_ocr=False,
+                )
+                self.model = LayoutLMv3ForTokenClassification.from_pretrained(
+                    "microsoft/layoutlmv3-base"
+                )
             self.model.eval()
 
             self._initialized = True

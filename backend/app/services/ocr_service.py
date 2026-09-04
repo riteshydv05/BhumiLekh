@@ -131,7 +131,37 @@ def _extract_text_pdf_pypdf(file_bytes: bytes) -> tuple[str, int, list[dict]]:
 # Internal: Tesseract image OCR (fallback for images when PaddleOCR fails)
 # ---------------------------------------------------------------------------
 
-def _extract_text_image_tesseract(image_bytes: bytes) -> tuple[str, float]:
+# ---------------------------------------------------------------------------
+# Internal: Tesseract image OCR (fallback for images when PaddleOCR fails)
+# ---------------------------------------------------------------------------
+
+_TESSERACT_LANG_MAP: dict[str, list[str]] = {
+    "ta": ["tam+eng", "tam"],
+    "tamil": ["tam+eng", "tam"],
+    "hi": ["hin+eng", "hin"],
+    "hindi": ["hin+eng", "hin"],
+    "mr": ["mar+hin+eng", "mar+eng", "mar"],
+    "marathi": ["mar+hin+eng", "mar+eng", "mar"],
+    "gu": ["guj+eng", "guj"],
+    "gujarati": ["guj+eng", "guj"],
+    "te": ["tel+eng", "tel"],
+    "telugu": ["tel+eng", "tel"],
+    "kn": ["kan+eng", "kan"],
+    "kannada": ["kan+eng", "kan"],
+    "ml": ["mal+eng", "mal"],
+    "malayalam": ["mal+eng", "mal"],
+    "bn": ["ben+eng", "ben"],
+    "bengali": ["ben+eng", "ben"],
+    "pa": ["pan+eng", "pan"],
+    "punjabi": ["pan+eng", "pan"],
+    "en": ["eng"],
+    "english": ["eng"],
+}
+
+
+def _extract_text_image_tesseract(
+    image_bytes: bytes, language: str = "auto"
+) -> tuple[str, float]:
     """Tesseract OCR on a single image. Returns (text, avg_confidence)."""
     if not _TESSERACT_AVAILABLE:
         raise RuntimeError(
@@ -142,11 +172,41 @@ def _extract_text_image_tesseract(image_bytes: bytes) -> tuple[str, float]:
     from PIL import Image  # noqa: PLC0415
 
     img = Image.open(BytesIO(image_bytes)).convert("L")  # grayscale
-    data = pytesseract.image_to_data(
-        img,
-        lang="eng+hin",
-        output_type=pytesseract.Output.DICT,
-    )
+
+    lang_key = (language or "auto").lower().strip()
+    if lang_key in _TESSERACT_LANG_MAP:
+        langs_to_try = _TESSERACT_LANG_MAP[lang_key] + ["tam+hin+mar+tel+kan+guj+ben+eng", "eng"]
+    else:
+        langs_to_try = [
+            "tam+hin+mar+tel+kan+guj+ben+eng",
+            "tam+eng",
+            "hin+eng",
+            "mar+hin+eng",
+            "tel+eng",
+            "kan+eng",
+            "eng",
+        ]
+
+    data = None
+    for lang_code in langs_to_try:
+        try:
+            data = pytesseract.image_to_data(
+                img,
+                lang=lang_code,
+                output_type=pytesseract.Output.DICT,
+            )
+            if data and any(str(t).strip() for t in data.get("text", [])):
+                logger.info("Tesseract succeeded with lang='%s'", lang_code)
+                break
+        except Exception:
+            continue
+
+    if not data:
+        data = pytesseract.image_to_data(
+            img,
+            output_type=pytesseract.Output.DICT,
+        )
+
     words = [
         (data["text"][i], int(data["conf"][i]))
         for i in range(len(data["text"]))
@@ -212,13 +272,13 @@ def _run_paddle_on_image_bytes(
 # Public API — primary entry point
 # ---------------------------------------------------------------------------
 
-def run_ocr(file_bytes: bytes, content_type: str) -> OCRResult:
+def run_ocr(file_bytes: bytes, content_type: str, language: str = "auto") -> OCRResult:
     """Run OCR on a document, returning a backward-compatible OCRResult.
 
     Engine selection:
       - PaddleOCR is tried first for all supported types.
       - pypdf text extraction is the PDF fallback.
-      - Tesseract is the image fallback.
+      - Tesseract is the image fallback (uses requested language).
 
     The result includes a ``pages`` field with the normalized block-level
     structure for downstream spatial processing (LayoutLMv3 etc.).
@@ -287,31 +347,34 @@ def run_ocr(file_bytes: bytes, content_type: str) -> OCRResult:
     elif content_type in {"image/jpeg", "image/png", "image/tiff"}:
         result.page_count = 1
 
-        # Try PaddleOCR on image
-        try:
-            pages, avg_conf = _run_paddle_on_image_bytes(file_bytes)
-            result.pages = pages
-            result.confidence = round(avg_conf, 4)
-            result.text = "\n".join(b["text"] for b in pages[0]["blocks"])
-            result.method = "paddle"
-            paddle_succeeded = True
-            logger.info(
-                "PaddleOCR image: %d chars, conf=%.2f", len(result.text), avg_conf
-            )
-        except Exception as exc:
-            logger.warning(
-                "PaddleOCR image failed (will try Tesseract fallback): %s", exc
-            )
-            result.warnings.append(f"PaddleOCR image failed: {exc}")
-
-        # Tesseract fallback
-        if not paddle_succeeded or not result.text.strip():
+        # Try PaddleOCR on image if language is auto/hindi/marathi/english
+        # For Tamil/Telugu/Kannada specific requests or if Paddle gives low quality, use Tesseract with requested language
+        if language in ("auto", "hi", "mr", "en", "unknown"):
             try:
-                text, conf = _extract_text_image_tesseract(file_bytes)
+                pages, avg_conf = _run_paddle_on_image_bytes(file_bytes)
+                if pages and pages[0].get("blocks"):
+                    result.pages = pages
+                    result.confidence = round(avg_conf, 4)
+                    result.text = "\n".join(b["text"] for b in pages[0]["blocks"])
+                    result.method = "paddle"
+                    paddle_succeeded = True
+                    logger.info(
+                        "PaddleOCR image: %d chars, conf=%.2f", len(result.text), avg_conf
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "PaddleOCR image failed (will try Tesseract fallback): %s", exc
+                )
+                result.warnings.append(f"PaddleOCR image failed: {exc}")
+
+        # Tesseract fallback or primary if specific Indic language specified
+        if not paddle_succeeded or not result.text.strip() or language not in ("auto", "hi", "mr", "en", "unknown"):
+            try:
+                text, conf = _extract_text_image_tesseract(file_bytes, language=language)
                 if text.strip():
                     result.text = text
                     result.confidence = round(conf, 4)
-                    result.method = "tesseract"
+                    result.method = f"tesseract({language})"
                     ts = datetime.utcnow().isoformat()
                     result.pages = [{
                         "page": 1,
@@ -321,17 +384,17 @@ def run_ocr(file_bytes: bytes, content_type: str) -> OCRResult:
                             "text": text,
                             "bbox": [0.0, 0.0, 0.0, 0.0],
                             "confidence": conf,
-                            "language": None,
+                            "language": language,
                             "ocr_engine": "tesseract",
                             "timestamp": ts,
                         }],
                     }]
                     logger.info(
-                        "Tesseract fallback: %d chars, conf=%.2f", len(text), conf
+                        "Tesseract OCR (%s): %d chars, conf=%.2f", language, len(text), conf
                     )
             except RuntimeError as exc:
                 result.warnings.append(str(exc))
-                logger.warning("Tesseract fallback skipped: %s", exc)
+                logger.warning("Tesseract OCR skipped: %s", exc)
             except Exception as exc:
                 result.error = f"Image OCR failed: {exc}"
                 logger.error("Image OCR error: %s", exc, exc_info=True)
@@ -345,14 +408,10 @@ def run_ocr(file_bytes: bytes, content_type: str) -> OCRResult:
 
 
 def run_ocr_structured(
-    file_bytes: bytes, content_type: str
+    file_bytes: bytes, content_type: str, language: str = "auto"
 ) -> dict:
-    """Run OCR and return the normalized OcrDocument dict.
-
-    This is the preferred API for new code that needs positional information.
-    The dict structure matches OcrDocument.to_dict().
-    """
-    result = run_ocr(file_bytes, content_type)
+    """Run OCR and return the normalized OcrDocument dict."""
+    result = run_ocr(file_bytes, content_type, language=language)
     return {
         "page_count": result.page_count,
         "full_text": result.text,

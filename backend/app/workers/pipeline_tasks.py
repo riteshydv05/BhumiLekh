@@ -80,7 +80,12 @@ def _set_status(
 
 
 def _save_results(doc_id: str | uuid.UUID, fields_with_meta: list[dict]) -> None:
-    """Persist extracted field results to document_results table."""
+    """Persist extracted field results to document_results table.
+
+    Supports both old-style (fixed field names) and new dynamic fields
+    with data_type, page_number, bounding_box, extraction_method,
+    canonical_key, source_text, and validation_status.
+    """
     from app.models.document_result import DocumentResult
 
     db = _get_db_session()
@@ -96,12 +101,20 @@ def _save_results(doc_id: str | uuid.UUID, fields_with_meta: list[dict]) -> None
                 document_id=target_uuid,
                 field_name=item["field_name"],
                 field_value=item.get("field_value"),
-                original_text=item.get("original_text"),
+                original_text=item.get("original_text", item.get("source_text")),
                 normalized_text=item.get("normalized_text"),
+                normalized_value=item.get("normalized_value"),
                 transliteration=item.get("transliteration"),
                 translation=item.get("translation"),
                 confidence=item.get("confidence"),
+                data_type=item.get("data_type", "string"),
+                page_number=item.get("page_number"),
+                bounding_box=item.get("bounding_box"),
+                source_text=item.get("source_text"),
+                extraction_method=item.get("extraction_method", "key_value_extraction"),
+                canonical_key=item.get("canonical_key"),
                 validated=item.get("validated", False),
+                validation_status=item.get("validation_status", "pending"),
                 anomaly_flag=item.get("anomaly_flag", False),
                 anomaly_reason=item.get("anomaly_reason"),
             )
@@ -114,6 +127,79 @@ def _save_results(doc_id: str | uuid.UUID, fields_with_meta: list[dict]) -> None
         db.rollback()
     finally:
         db.close()
+
+
+def _save_ocr_pages(doc_id: str | uuid.UUID, ocr_pages: list[dict], language: str = "en") -> None:
+    """Store raw OCR output per page in the document_pages table."""
+    from app.models.document_page import DocumentPage
+
+    db = _get_db_session()
+    target_uuid = uuid.UUID(str(doc_id)) if not isinstance(doc_id, uuid.UUID) else doc_id
+    try:
+        # Remove existing OCR pages (idempotent)
+        db.query(DocumentPage).filter(
+            DocumentPage.document_id == target_uuid
+        ).delete()
+
+        for page_data in ocr_pages:
+            page_num = page_data.get("page", 1)
+            blocks = page_data.get("blocks", [])
+            raw_text = "\n".join(
+                str(b.get("text", "")) for b in blocks
+                if isinstance(b, dict) and b.get("text")
+            )
+            avg_conf = 0.0
+            conf_blocks = [b.get("confidence", 0.0) for b in blocks if isinstance(b, dict) and b.get("confidence")]
+            if conf_blocks:
+                avg_conf = sum(conf_blocks) / len(conf_blocks)
+
+            engines = set(b.get("ocr_engine", "unknown") for b in blocks if isinstance(b, dict))
+
+            page = DocumentPage(
+                document_id=target_uuid,
+                page_number=page_num,
+                raw_text=raw_text if raw_text.strip() else None,
+                language=language,
+                ocr_confidence=avg_conf,
+                ocr_engine=", ".join(sorted(engines)) if engines else None,
+                blocks_json=blocks,
+            )
+            db.add(page)
+
+        db.commit()
+        logger.info("[%s] Stored raw OCR for %d pages", doc_id, len(ocr_pages))
+    except Exception as exc:
+        logger.error("[%s] Failed to store OCR pages: %s", doc_id, exc)
+        db.rollback()
+    finally:
+        db.close()
+
+
+def _stage_classify(doc_id: str, text: str) -> tuple[str, float]:
+    """CLASSIFICATION: Determine document type from OCR text."""
+    from app.services.dynamic_extraction_service import classify_document
+
+    logger.info("[%s][CLASSIFICATION] Classifying document type", doc_id)
+    doc_type, confidence = classify_document(text)
+
+    # Persist document_type
+    db = _get_db_session()
+    target_uuid = uuid.UUID(str(doc_id)) if not isinstance(doc_id, uuid.UUID) else doc_id
+    try:
+        from app.models.document import Document
+        doc = db.query(Document).filter(Document.id == target_uuid).first()
+        if doc:
+            doc.document_type = doc_type
+            doc.updated_at = datetime.utcnow()
+            db.commit()
+    except Exception as exc:
+        logger.warning("[%s] Failed to persist document_type: %s", doc_id, exc)
+        db.rollback()
+    finally:
+        db.close()
+
+    logger.info("[%s][CLASSIFICATION] type=%s confidence=%.2f", doc_id, doc_type, confidence)
+    return doc_type, confidence
 
 
 def _stage_handwriting(
@@ -384,9 +470,21 @@ def _stage_ocr(doc_id: str, file_bytes: bytes, content_type: str) -> tuple[str, 
     Updates DB with page_count and ocr_confidence.
     """
     from app.services.ocr_service import run_ocr
+    from app.models.document import Document
 
-    logger.info("[%s][OCR_PROCESSING] Starting OCR (type=%s)", doc_id, content_type)
-    ocr_result = run_ocr(file_bytes, content_type)
+    target_lang = "auto"
+    db = _get_db_session()
+    try:
+        doc = db.query(Document).filter(Document.id == uuid.UUID(str(doc_id))).first()
+        if doc and doc.detected_language and doc.detected_language != "unknown":
+            target_lang = doc.detected_language
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+    logger.info("[%s][OCR_PROCESSING] Starting OCR (type=%s, lang=%s)", doc_id, content_type, target_lang)
+    ocr_result = run_ocr(file_bytes, content_type, language=target_lang)
 
     logger.info(
         "[%s][OCR_PROCESSING] Complete: pages=%d confidence=%.2f method=%s blocks=%d",
@@ -544,32 +642,71 @@ def _stage_language_detection(doc_id: str | uuid.UUID, text: str) -> str:
     return lang
 
 
-def _stage_extraction(doc_id: str, text: str, language: str) -> list:
-    """EXTRACTION: Run NLP entity extraction.
+def _stage_extraction(doc_id: str, text: str, language: str, ocr_pages: list | None = None) -> list:
+    """EXTRACTION: Dynamic field discovery + optional NLP entity extraction.
 
-    Returns list of LandRecordEntity / ExtractedField objects.
+    Uses the new dynamic_extraction_service to discover fields from the
+    document content rather than searching for predefined fields.
+    Falls back to legacy nlp_service extraction and merges results.
+
+    Returns list of DynamicField / LandRecordEntity objects.
     """
-    from app.services.nlp_service import extract_entities, score_confidence
+    from app.services.dynamic_extraction_service import extract_dynamic_fields
 
-    logger.info("[%s][EXTRACTION] Extracting entities", doc_id)
-    extraction = extract_entities(text, language)
-    extraction = score_confidence(extraction)
+    logger.info("[%s][EXTRACTION] Running dynamic field discovery", doc_id)
+    dynamic_result = extract_dynamic_fields(text, ocr_pages, language)
+    dynamic_fields = dynamic_result.fields
 
     logger.info(
-        "[%s][EXTRACTION] Extracted %d fields", doc_id, len(extraction.fields)
+        "[%s][EXTRACTION] Dynamic discovery: %d fields (type=%s)",
+        doc_id, len(dynamic_fields), dynamic_result.document_type,
     )
-    return extraction.fields
+
+    # Also run legacy NLP extraction for backward compatibility
+    legacy_fields = []
+    try:
+        from app.services.nlp_service import extract_entities, score_confidence
+        extraction = extract_entities(text, language)
+        extraction = score_confidence(extraction)
+        legacy_fields = extraction.fields
+        logger.info(
+            "[%s][EXTRACTION] Legacy NLP: %d fields", doc_id, len(legacy_fields)
+        )
+    except Exception as exc:
+        logger.warning("[%s][EXTRACTION] Legacy NLP failed (non-critical): %s", doc_id, exc)
+
+    # Merge: dynamic fields take priority; add legacy fields for types not already covered
+    seen_canonical = set()
+    for f in dynamic_fields:
+        if f.canonical_key:
+            seen_canonical.add(f.canonical_key)
+
+    merged = list(dynamic_fields)
+    for lf in legacy_fields:
+        entity_type = getattr(lf, "entity_type", "")
+        if entity_type and entity_type not in seen_canonical:
+            seen_canonical.add(entity_type)
+            merged.append(lf)
+
+    logger.info("[%s][EXTRACTION] Total merged fields: %d", doc_id, len(merged))
+    return merged
 
 
 def _stage_multilingual(doc_id: str, fields: list) -> list:
     """MULTILINGUAL: Transliterate, digit-normalize, and translate extracted fields."""
     from app.services.multilingual_service import enrich_entity
+    from app.services.translation_service import translate_text
 
     logger.info("[%s][MULTILINGUAL] Enriching %d fields with IndicXlit/translation", doc_id, len(fields))
     enriched_fields = []
     for field_obj in fields:
         try:
             enriched = enrich_entity(field_obj)
+            val_text = getattr(enriched, "normalized_text", None) or getattr(enriched, "original_text", None) or getattr(enriched, "field_value", None) or getattr(enriched, "source_text", None) or ""
+            if val_text and not getattr(enriched, "translation", None):
+                tr = translate_text(val_text, target_lang="en")
+                if tr:
+                    enriched.translation = tr
             enriched_fields.append(enriched)
         except Exception as exc:
             logger.warning("[%s][MULTILINGUAL] Failed to enrich field %s: %s", doc_id, getattr(field_obj, "entity_type", ""), exc)
@@ -722,6 +859,31 @@ def process_document(self, document_id: str) -> dict:
         metadata["stages"]["language"] = {"detected": language}
 
         # --------------------------------------------------------------
+        # Stage 2c: Store raw OCR pages (audit trail / reprocessing)
+        # --------------------------------------------------------------
+        try:
+            _save_ocr_pages(doc_id, ocr_pages, language)
+            metadata["stages"]["ocr_storage"] = {"status": "ok", "pages": len(ocr_pages)}
+        except Exception as exc:
+            logger.warning("%s[OCR_STORAGE] Failed (non-critical): %s", log_prefix, exc)
+            metadata["stages"]["ocr_storage"] = {"status": "failed", "error": str(exc)}
+
+        # --------------------------------------------------------------
+        # Stage 2d: Document Classification
+        # --------------------------------------------------------------
+        doc_type = "Unknown"
+        try:
+            doc_type, doc_type_conf = _stage_classify(doc_id, text)
+            metadata["stages"]["classification"] = {
+                "status": "ok",
+                "document_type": doc_type,
+                "confidence": doc_type_conf,
+            }
+        except Exception as exc:
+            logger.warning("%s[CLASSIFICATION] Failed (non-critical): %s", log_prefix, exc)
+            metadata["stages"]["classification"] = {"status": "failed", "error": str(exc)}
+
+        # --------------------------------------------------------------
         # Stage 3: LAYOUT_ANALYSIS
         # --------------------------------------------------------------
         _set_status(doc_id, STATUS_LAYOUT)
@@ -789,16 +951,16 @@ def process_document(self, document_id: str) -> dict:
 
 
         # --------------------------------------------------------------
-        # Stage 5: EXTRACTION (IndicNER / rules)
+        # Stage 5: EXTRACTION (Dynamic Discovery + Legacy NLP)
         # --------------------------------------------------------------
         _set_status(doc_id, STATUS_EXTRACTION)
         fields = []
         try:
-            fields = _stage_extraction(doc_id, text, language)
+            fields = _stage_extraction(doc_id, text, language, ocr_pages)
             metadata["stages"]["extraction"] = {
                 "status": "ok",
                 "field_count": len(fields),
-                "fields": [getattr(f, "entity_type", getattr(f, "field_name", "")) for f in fields],
+                "fields": [getattr(f, "field_name", getattr(f, "entity_type", "")) for f in fields],
             }
         except Exception as exc:
             logger.error("%s[EXTRACTION] Failed: %s", log_prefix, exc, exc_info=True)
@@ -867,12 +1029,19 @@ def process_document(self, document_id: str) -> dict:
             results_to_save.append({
                 "field_name": f_name,
                 "field_value": f_val,
-                "original_text": getattr(ef, "original_text", f_val),
+                "original_text": getattr(ef, "source_text", getattr(ef, "original_text", f_val)),
                 "normalized_text": getattr(ef, "normalized_text", f_val),
                 "transliteration": getattr(ef, "transliteration", ""),
                 "translation": getattr(ef, "translation", None),
                 "confidence": getattr(ef, "confidence", 1.0),
+                "data_type": getattr(ef, "data_type", "string"),
+                "page_number": getattr(ef, "page_number", getattr(ef, "page", None)),
+                "bounding_box": getattr(ef, "bounding_box", None),
+                "source_text": getattr(ef, "source_text", getattr(ef, "original_text", "")),
+                "extraction_method": getattr(ef, "extraction_method", "key_value_extraction"),
+                "canonical_key": getattr(ef, "canonical_key", None),
                 "validated": is_valid,
+                "validation_status": "valid" if is_valid else "invalid",
                 "anomaly_flag": False,
                 "anomaly_reason": None,
             })

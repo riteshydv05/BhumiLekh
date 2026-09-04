@@ -6,7 +6,10 @@ import { useParams } from "next/navigation";
 import {
   getDocument,
   getDocumentResults,
+  getDocumentStatus,
   getDocumentFileUrl,
+  reprocessDocument,
+  translateDocument,
   DocumentItem,
   DocumentResultItem,
 } from "@/lib/api";
@@ -26,6 +29,10 @@ import {
   Calendar,
   Layers,
   AlertCircle,
+  Languages,
+  RotateCw,
+  Globe,
+  Sparkles,
 } from "lucide-react";
 
 export default function DocumentDetailPage() {
@@ -37,28 +44,98 @@ export default function DocumentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [selectedOcrLang, setSelectedOcrLang] = useState<string>("auto");
+  const [selectedTargetLang, setSelectedTargetLang] = useState<string>("en");
+  const [isReprocessing, setIsReprocessing] = useState<boolean>(false);
+  const [isTranslating, setIsTranslating] = useState<boolean>(false);
+
   useEffect(() => {
     if (!docId) return;
 
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
+    let isMounted = true;
+
+    const fetchData = async (isInitial = false) => {
+      if (isInitial) setLoading(true);
       try {
         const [docData, resData] = await Promise.all([
           getDocument(docId),
-          getDocumentResults(docId).catch(() => ({ document_id: docId, count: 0, results: [] })),
+          getDocumentResults(docId).catch(() => ({ document_id: docId, count: 0, results: [], fields: [] } as any)),
         ]);
+        if (!isMounted) return;
         setDocument(docData);
-        setResults(resData.results || []);
+        setResults(resData.results || (resData as any).fields || []);
+        if (docData.detected_language && docData.detected_language !== "unknown") {
+          setSelectedOcrLang(docData.detected_language);
+        }
+        setError(null);
       } catch (err: any) {
-        setError(err.message || "Failed to load document details");
+        if (!isMounted) return;
+        if (isInitial) {
+          setError(err.message || "Failed to load document details");
+        }
       } finally {
-        setLoading(false);
+        if (isMounted && isInitial) {
+          setLoading(false);
+        }
       }
     };
 
-    fetchData();
-  }, [docId]);
+    fetchData(true);
+
+    // Poll while document is in non-terminal processing states
+    const terminalStates = ["COMPLETED", "VERIFICATION_REQUIRED", "FAILED"];
+    const interval = setInterval(async () => {
+      if (!isMounted) return;
+      if (document && terminalStates.includes(document.status) && !isReprocessing) {
+        return;
+      }
+      await fetchData(false);
+    }, 2500);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [docId, document?.status, isReprocessing]);
+
+  const handleReprocess = async () => {
+    if (!docId) return;
+    setIsReprocessing(true);
+    try {
+      await reprocessDocument(docId, selectedOcrLang);
+      // Poll for status completion
+      let status = "PROCESSING";
+      for (let i = 0; i < 20; i++) {
+        await new Promise((r) => setTimeout(r, 1200));
+        const st = await getDocumentStatus(docId);
+        status = st.status;
+        if (["COMPLETED", "VERIFICATION_REQUIRED", "FAILED"].includes(status)) break;
+      }
+      const [updatedDoc, updatedRes] = await Promise.all([
+        getDocument(docId),
+        getDocumentResults(docId),
+      ]);
+      setDocument(updatedDoc);
+      setResults(updatedRes.results || updatedRes.fields || []);
+    } catch (err: any) {
+      alert("Failed to reprocess document: " + (err.message || err));
+    } finally {
+      setIsReprocessing(false);
+    }
+  };
+
+  const handleTranslate = async () => {
+    if (!docId) return;
+    setIsTranslating(true);
+    try {
+      const res = await translateDocument(docId, selectedTargetLang);
+      setResults(res.fields || []);
+    } catch (err: any) {
+      alert("Failed to translate fields: " + (err.message || err));
+    } finally {
+      setIsTranslating(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -77,24 +154,147 @@ export default function DocumentDetailPage() {
         <p className="text-xs text-gray-600 mt-1">{error || "Could not retrieve document"}</p>
         <Link
           href="/documents"
-          className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-amber-600 text-white rounded text-xs font-semibold"
+          className="inline-block mt-4 px-4 py-2 bg-gray-900 text-white text-xs font-bold rounded"
         >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Back to Documents</span>
+          Back to Documents
         </Link>
       </div>
     );
   }
 
-  // Group fields into structured government categories
-  const fieldMap: Record<string, DocumentResultItem> = {};
-  results.forEach((r) => {
-    fieldMap[r.field_name] = r;
-  });
+  // Group fields dynamically by data_type or canonical_key
+  const categorizeFields = (fields: DocumentResultItem[]) => {
+    const people = fields.filter(
+      (f) =>
+        f.data_type === "person" ||
+        ["owner_name", "father_name", "mother_name", "purchaser", "seller", "grantee"].some((k) =>
+          (f.canonical_key || f.field_name).toLowerCase().includes(k)
+        )
+    );
 
-  const getField = (name: string) => fieldMap[name] || null;
+    const identifiers = fields.filter(
+      (f) =>
+        !people.includes(f) &&
+        (f.data_type === "identifier" ||
+          ["survey_number", "khasra_number", "khata_number", "plot_number", "patta_number", "deed_number", "registration_number", "mutation_number"].some((k) =>
+            (f.canonical_key || f.field_name).toLowerCase().includes(k)
+          ))
+    );
+
+    const location = fields.filter(
+      (f) =>
+        !people.includes(f) &&
+        !identifiers.includes(f) &&
+        (f.data_type === "address" ||
+          ["village", "tehsil", "district", "state", "block", "sub_division"].some((k) =>
+            (f.canonical_key || f.field_name).toLowerCase().includes(k)
+          ))
+    );
+
+    const financialAndArea = fields.filter(
+      (f) =>
+        !people.includes(f) &&
+        !identifiers.includes(f) &&
+        !location.includes(f) &&
+        (f.data_type === "currency" ||
+          f.data_type === "area" ||
+          ["area", "stamp_duty", "consideration_amount", "tax", "assessment"].some((k) =>
+            (f.canonical_key || f.field_name).toLowerCase().includes(k)
+          ))
+    );
+
+    const dates = fields.filter(
+      (f) =>
+        !people.includes(f) &&
+        !identifiers.includes(f) &&
+        !location.includes(f) &&
+        !financialAndArea.includes(f) &&
+        (f.data_type === "date" ||
+          (f.canonical_key || f.field_name).toLowerCase().includes("date"))
+    );
+
+    const other = fields.filter(
+      (f) =>
+        !people.includes(f) &&
+        !identifiers.includes(f) &&
+        !location.includes(f) &&
+        !financialAndArea.includes(f) &&
+        !dates.includes(f)
+    );
+
+    const categories = [];
+    if (people.length > 0)
+      categories.push({ label: "People & Ownership", icon: <User className="w-4 h-4 text-blue-600" />, fields: people });
+    if (identifiers.length > 0)
+      categories.push({ label: "Parcel & Registration Identifiers", icon: <LandPlot className="w-4 h-4 text-purple-600" />, fields: identifiers });
+    if (location.length > 0)
+      categories.push({ label: "Location & Administrative Divisions", icon: <MapPin className="w-4 h-4 text-green-600" />, fields: location });
+    if (financialAndArea.length > 0)
+      categories.push({ label: "Area & Financial Details", icon: <FileCheck2 className="w-4 h-4 text-emerald-600" />, fields: financialAndArea });
+    if (dates.length > 0)
+      categories.push({ label: "Dates & Timestamps", icon: <Calendar className="w-4 h-4 text-yellow-600" />, fields: dates });
+    if (other.length > 0)
+      categories.push({ label: "Other Extracted Fields", icon: <Layers className="w-4 h-4 text-gray-600" />, fields: other });
+
+    // Fallback if categorization leaves empty list
+    if (categories.length === 0 && fields.length > 0) {
+      categories.push({ label: "Extracted Record Fields", icon: <Layers className="w-4 h-4 text-amber-600" />, fields });
+    }
+
+    return categories;
+  };
+
+  const categories = categorizeFields(results);
 
   const fileUrl = getDocumentFileUrl(document.id);
+
+  const documentType = (document as any).document_type || "Unknown";
+
+  const getScriptDisplayName = (code?: string | null) => {
+    if (!code || code === "unknown") return "Auto-detected";
+    const lower = code.toLowerCase();
+    const map: Record<string, string> = {
+      mr: "Marathi (मराठी)",
+      hi: "Hindi (हिंदी)",
+      en: "English",
+      gu: "Gujarati (ગુજરાતી)",
+      ta: "Tamil (தமிழ்)",
+      te: "Telugu (తెలుగు)",
+      kn: "Kannada (ಕನ್ನಡ)",
+      ml: "Malayalam (മലയാളം)",
+      pa: "Punjabi (ਪੰਜਾਬੀ)",
+      bn: "Bengali (বাংলা)",
+    };
+    return map[lower] || code;
+  };
+
+  const getExtractionMethodLabel = (method?: string | null) => {
+    if (!method) return "";
+    const labels: Record<string, string> = {
+      key_value_extraction: "Key-Value",
+      ner: "NER",
+      table_extraction: "Table",
+      handwriting_ocr: "Handwriting",
+      vlm: "VLM",
+      manual: "Manual",
+    };
+    return labels[method] || method;
+  };
+
+  const getDataTypeColor = (dt?: string | null) => {
+    const colors: Record<string, string> = {
+      person: "bg-blue-50 text-blue-700 border-blue-200",
+      identifier: "bg-purple-50 text-purple-700 border-purple-200",
+      address: "bg-green-50 text-green-700 border-green-200",
+      date: "bg-yellow-50 text-yellow-700 border-yellow-200",
+      currency: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      area: "bg-orange-50 text-orange-700 border-orange-200",
+      integer: "bg-gray-50 text-gray-600 border-gray-200",
+      decimal: "bg-gray-50 text-gray-600 border-gray-200",
+      string: "bg-gray-50 text-gray-500 border-gray-200",
+    };
+    return colors[dt || "string"] || colors.string;
+  };
 
   return (
     <div>
@@ -121,6 +321,11 @@ export default function DocumentDetailPage() {
                 {document.filename}
               </h1>
               <DocumentStatusBadge status={document.status} />
+              {documentType !== "Unknown" && (
+                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                  {documentType}
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-gray-500 font-mono mt-1">
               Document ID: {document.id} • Format: {document.content_type} • Size:{" "}
@@ -142,7 +347,7 @@ export default function DocumentDetailPage() {
         {/* Split Screen View: Left Preview, Right Extracted Sections */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left: Document Preview Canvas (5 cols) */}
-          <div className="lg:col-span-5 flex flex-col h-[700px]">
+          <div className="lg:col-span-5 flex flex-col h-[750px]">
             <h2 className="text-xs font-bold uppercase tracking-wider text-gray-700 mb-2 flex items-center gap-1.5">
               <FileText className="w-4 h-4 text-amber-700" />
               <span>Original Document Scan</span>
@@ -157,7 +362,7 @@ export default function DocumentDetailPage() {
             </div>
           </div>
 
-          {/* Right: Extracted Structured Information (7 cols) */}
+          {/* Right: Dynamic Extracted Information (7 cols) */}
           <div className="lg:col-span-7 space-y-4">
             <h2 className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center justify-between">
               <span className="flex items-center gap-1.5">
@@ -165,174 +370,147 @@ export default function DocumentDetailPage() {
                 <span>Extracted Record Data ({results.length} Fields)</span>
               </span>
               <span className="text-[11px] text-gray-500 font-normal">
-                Detected Script: {document.detected_language || "Auto-detected"}
+                Detected Script: {getScriptDisplayName(document.detected_language)}
               </span>
             </h2>
 
-            {/* Section 1: Land Owner Details */}
-            <div className="gov-card p-4">
-              <h3 className="text-xs font-bold text-gray-900 uppercase border-b border-gray-100 pb-2 mb-3 flex items-center gap-1.5">
-                <User className="w-4 h-4 text-amber-700" />
-                <span>1. Land Owner Information</span>
-              </h3>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div>
-                  <span className="text-gray-500 block text-[11px]">Primary Owner Name</span>
-                  <p className="font-semibold text-gray-900 mt-0.5">
-                    {getField("OWNER_NAME")?.field_value || "Not available"}
-                  </p>
-                  {getField("OWNER_NAME")?.transliteration && (
-                    <p className="text-[11px] text-gray-500 italic">
-                      Transliteration: {getField("OWNER_NAME")?.transliteration}
-                    </p>
-                  )}
-                  {getField("OWNER_NAME") && (
-                    <div className="mt-1">
-                      <ConfidenceBadge score={getField("OWNER_NAME")?.confidence} />
-                    </div>
-                  )}
+            {/* Language Selection & Translation Control Bar */}
+            <div className="gov-card p-3 bg-gradient-to-r from-amber-50/80 via-white to-amber-50/80 border border-amber-200/80 shadow-xs rounded-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1 text-amber-900 font-bold">
+                  <Languages className="w-4 h-4 text-amber-700" />
+                  <span>OCR Language:</span>
                 </div>
-
-                <div>
-                  <span className="text-gray-500 block text-[11px]">Father / Husband Name</span>
-                  <p className="font-semibold text-gray-900 mt-0.5">
-                    {getField("FATHER_NAME")?.field_value || "Not available"}
-                  </p>
-                  {getField("FATHER_NAME")?.transliteration && (
-                    <p className="text-[11px] text-gray-500 italic">
-                      Transliteration: {getField("FATHER_NAME")?.transliteration}
-                    </p>
-                  )}
-                  {getField("FATHER_NAME") && (
-                    <div className="mt-1">
-                      <ConfidenceBadge score={getField("FATHER_NAME")?.confidence} />
-                    </div>
-                  )}
+                
+                <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded border border-gray-300">
+                  <select
+                    value={selectedOcrLang}
+                    onChange={(e) => setSelectedOcrLang(e.target.value)}
+                    className="text-xs bg-transparent font-medium text-gray-900 focus:outline-none cursor-pointer"
+                  >
+                    <option value="auto">Auto-Detect</option>
+                    <option value="ta">Tamil (தமிழ்)</option>
+                    <option value="hi">Hindi (हिंदी)</option>
+                    <option value="mr">Marathi (मराठी)</option>
+                    <option value="te">Telugu (తెలుగు)</option>
+                    <option value="kn">Kannada (ಕನ್ನಡ)</option>
+                    <option value="gu">Gujarati (ગુજરાતી)</option>
+                    <option value="ml">Malayalam (മലയാളം)</option>
+                    <option value="bn">Bengali (বাংলা)</option>
+                    <option value="pa">Punjabi (ਪੰਜਾਬੀ)</option>
+                    <option value="en">English</option>
+                  </select>
+                  <button
+                    onClick={handleReprocess}
+                    disabled={isReprocessing}
+                    className="px-2.5 py-0.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-[11px] font-bold rounded flex items-center gap-1 shadow-xs transition"
+                    title="Re-run OCR with chosen language"
+                  >
+                    <RotateCw className={`w-3 h-3 ${isReprocessing ? "animate-spin" : ""}`} />
+                    <span>{isReprocessing ? "Processing..." : "Re-run OCR"}</span>
+                  </button>
                 </div>
+              </div>
+
+              {/* Translate Section */}
+              <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded border border-gray-300">
+                <Globe className="w-3.5 h-3.5 text-blue-600" />
+                <span className="text-[11px] text-gray-500 font-medium">Translate To:</span>
+                <select
+                  value={selectedTargetLang}
+                  onChange={(e) => setSelectedTargetLang(e.target.value)}
+                  className="text-xs bg-transparent font-medium text-gray-900 focus:outline-none cursor-pointer"
+                >
+                  <option value="en">English</option>
+                  <option value="hi">Hindi (हिंदी)</option>
+                  <option value="mr">Marathi (मराठी)</option>
+                  <option value="ta">Tamil (தமிழ்)</option>
+                  <option value="te">Telugu (తెలుగు)</option>
+                  <option value="kn">Kannada (ಕನ್ನಡ)</option>
+                  <option value="gu">Gujarati (ગુજરાતી)</option>
+                  <option value="bn">Bengali (বাংলা)</option>
+                  <option value="ml">Malayalam (മലയാളം)</option>
+                </select>
+                <button
+                  onClick={handleTranslate}
+                  disabled={isTranslating}
+                  className="px-2.5 py-0.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-[11px] font-bold rounded flex items-center gap-1 shadow-xs transition"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>{isTranslating ? "Translating..." : "Translate"}</span>
+                </button>
               </div>
             </div>
 
-            {/* Section 2: Land Identifiers & Area */}
-            <div className="gov-card p-4">
-              <h3 className="text-xs font-bold text-gray-900 uppercase border-b border-gray-100 pb-2 mb-3 flex items-center gap-1.5">
-                <LandPlot className="w-4 h-4 text-amber-700" />
-                <span>2. Land Identifiers & Area</span>
-              </h3>
+            {results.length === 0 && (
+              <div className="gov-card p-6 text-center text-gray-500 text-sm">
+                <AlertCircle className="w-6 h-6 mx-auto mb-2 text-gray-400" />
+                <p>No fields extracted yet. Document may still be processing or selected OCR language needs adjustment.</p>
+              </div>
+            )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                <div>
-                  <span className="text-gray-500 block text-[11px]">Survey / Khasra No.</span>
-                  <p className="font-mono font-bold text-gray-900 mt-0.5">
-                    {getField("SURVEY_NUMBER")?.field_value ||
-                      getField("KHASRA_NUMBER")?.field_value ||
-                      "Not available"}
-                  </p>
-                  {(getField("SURVEY_NUMBER") || getField("KHASRA_NUMBER")) && (
-                    <div className="mt-1">
-                      <ConfidenceBadge
-                        score={
-                          getField("SURVEY_NUMBER")?.confidence ||
-                          getField("KHASRA_NUMBER")?.confidence
-                        }
-                      />
-                    </div>
-                  )}
-                </div>
+            {/* Dynamic field categories */}
+            {categories.map((cat, catIdx) => (
+              <div key={catIdx} className="gov-card p-4">
+                <h3 className="text-xs font-bold text-gray-900 uppercase border-b border-gray-100 pb-2 mb-3 flex items-center gap-1.5">
+                  {cat.icon}
+                  <span>{catIdx + 1}. {cat.label}</span>
+                  <span className="ml-auto text-[10px] text-gray-400 font-normal lowercase">
+                    {cat.fields.length} field{cat.fields.length !== 1 ? "s" : ""}
+                  </span>
+                </h3>
 
-                <div>
-                  <span className="text-gray-500 block text-[11px]">Khata / Account No.</span>
-                  <p className="font-mono font-bold text-gray-900 mt-0.5">
-                    {getField("KHATA_NUMBER")?.field_value || "Not available"}
-                  </p>
-                  {getField("KHATA_NUMBER") && (
-                    <div className="mt-1">
-                      <ConfidenceBadge score={getField("KHATA_NUMBER")?.confidence} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  {cat.fields.map((f) => (
+                    <div key={f.id} className="group p-2.5 rounded bg-gray-50/60 border border-gray-100 hover:border-amber-200 transition">
+                      <span className="text-gray-500 block text-[11px] flex items-center gap-1 font-medium">
+                        {f.field_name}
+                        {f.canonical_key && (
+                          <span className="text-[9px] text-gray-400 font-mono" title={`Canonical: ${f.canonical_key}`}>
+                            [{f.canonical_key}]
+                          </span>
+                        )}
+                      </span>
+                      <p className="font-semibold text-gray-900 mt-0.5 break-words">
+                        {f.field_value || f.original_text || "—"}
+                      </p>
+                      {f.translation && f.translation !== f.field_value && f.translation !== f.original_text && (
+                        <p className="text-[11px] text-blue-700 font-medium mt-1 flex items-start gap-1 bg-blue-50/70 p-1.5 rounded border border-blue-100">
+                          <span className="text-[9px] bg-blue-600 text-white px-1 py-0.5 rounded font-bold uppercase shrink-0">Translated</span>
+                          <span className="break-words">{f.translation}</span>
+                        </p>
+                      )}
+                      {f.transliteration && f.transliteration !== f.field_value && (
+                        <p className="text-[10px] text-gray-500 italic mt-0.5">
+                          Phonetic: {f.transliteration}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                        {f.confidence != null && (
+                          <ConfidenceBadge score={f.confidence} />
+                        )}
+                        {f.data_type && f.data_type !== "string" && (
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded border ${getDataTypeColor(f.data_type)}`}>
+                            {f.data_type}
+                          </span>
+                        )}
+                        {f.extraction_method && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-white text-gray-500 border border-gray-200">
+                            {getExtractionMethodLabel(f.extraction_method)}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  )}
-                </div>
-
-                <div>
-                  <span className="text-gray-500 block text-[11px]">Recorded Area</span>
-                  <p className="font-bold text-gray-900 mt-0.5">
-                    {getField("AREA")?.field_value || "Not available"}
-                  </p>
-                  {getField("AREA") && (
-                    <div className="mt-1">
-                      <ConfidenceBadge score={getField("AREA")?.confidence} />
-                    </div>
-                  )}
+                  ))}
                 </div>
               </div>
-            </div>
+            ))}
 
-            {/* Section 3: Location Details */}
-            <div className="gov-card p-4">
-              <h3 className="text-xs font-bold text-gray-900 uppercase border-b border-gray-100 pb-2 mb-3 flex items-center gap-1.5">
-                <MapPin className="w-4 h-4 text-amber-700" />
-                <span>3. Location Jurisdiction</span>
-              </h3>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                <div>
-                  <span className="text-gray-500 block text-[11px]">Village / Mauza</span>
-                  <p className="font-semibold text-gray-900 mt-0.5">
-                    {getField("VILLAGE")?.field_value || "Not available"}
-                  </p>
-                </div>
-
-                <div>
-                  <span className="text-gray-500 block text-[11px]">Tehsil / Taluka</span>
-                  <p className="font-semibold text-gray-900 mt-0.5">
-                    {getField("TEHSIL")?.field_value || "Not available"}
-                  </p>
-                </div>
-
-                <div>
-                  <span className="text-gray-500 block text-[11px]">District</span>
-                  <p className="font-semibold text-gray-900 mt-0.5">
-                    {getField("DISTRICT")?.field_value || "Not available"}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Section 4: Registration & Mutation Details */}
-            <div className="gov-card p-4">
-              <h3 className="text-xs font-bold text-gray-900 uppercase border-b border-gray-100 pb-2 mb-3 flex items-center gap-1.5">
-                <FileCheck2 className="w-4 h-4 text-amber-700" />
-                <span>4. Registration & Mutation Details</span>
-              </h3>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                <div>
-                  <span className="text-gray-500 block text-[11px]">Registration / Deed No.</span>
-                  <p className="font-mono text-gray-900 mt-0.5">
-                    {getField("REGISTRATION_NUMBER")?.field_value || "Not available"}
-                  </p>
-                </div>
-
-                <div>
-                  <span className="text-gray-500 block text-[11px]">Mutation No.</span>
-                  <p className="font-mono text-gray-900 mt-0.5">
-                    {getField("MUTATION_NUMBER")?.field_value || "Not available"}
-                  </p>
-                </div>
-
-                <div>
-                  <span className="text-gray-500 block text-[11px]">Execution Date</span>
-                  <p className="font-mono text-gray-900 mt-0.5">
-                    {getField("DATE")?.field_value || "Not available"}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Section 5: Validation & Anomaly Detection */}
+            {/* Validation & Anomaly Detection */}
             <div className="gov-card p-4 border-l-4 border-l-amber-600">
               <h3 className="text-xs font-bold text-gray-900 uppercase border-b border-gray-100 pb-2 mb-3 flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-amber-700" />
-                <span>5. Validation & Anomaly Verification Signal</span>
+                <span>Validation & Anomaly Verification Signal</span>
               </h3>
 
               {results.some((r) => r.anomaly_flag) ? (

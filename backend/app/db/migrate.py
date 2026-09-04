@@ -21,6 +21,22 @@ _DOCUMENT_COLUMN_MIGRATIONS = [
     "ALTER TABLE documents ADD COLUMN IF NOT EXISTS page_count INTEGER",
     "ALTER TABLE documents ADD COLUMN IF NOT EXISTS ocr_confidence FLOAT",
     "ALTER TABLE documents ADD COLUMN IF NOT EXISTS processing_metadata JSONB",
+    "ALTER TABLE documents ADD COLUMN IF NOT EXISTS document_type VARCHAR(100)",
+]
+
+_DOCUMENT_RESULTS_COLUMN_MIGRATIONS = [
+    "ALTER TABLE document_results ADD COLUMN IF NOT EXISTS original_text TEXT",
+    "ALTER TABLE document_results ADD COLUMN IF NOT EXISTS normalized_text TEXT",
+    "ALTER TABLE document_results ADD COLUMN IF NOT EXISTS transliteration TEXT",
+    "ALTER TABLE document_results ADD COLUMN IF NOT EXISTS translation TEXT",
+    "ALTER TABLE document_results ADD COLUMN IF NOT EXISTS data_type VARCHAR(50) DEFAULT 'string'",
+    "ALTER TABLE document_results ADD COLUMN IF NOT EXISTS page_number INTEGER",
+    "ALTER TABLE document_results ADD COLUMN IF NOT EXISTS bounding_box JSONB",
+    "ALTER TABLE document_results ADD COLUMN IF NOT EXISTS extraction_method VARCHAR(50)",
+    "ALTER TABLE document_results ADD COLUMN IF NOT EXISTS canonical_key VARCHAR(100)",
+    "ALTER TABLE document_results ADD COLUMN IF NOT EXISTS source_text TEXT",
+    "ALTER TABLE document_results ADD COLUMN IF NOT EXISTS normalized_value TEXT",
+    "ALTER TABLE document_results ADD COLUMN IF NOT EXISTS validation_status VARCHAR(50) DEFAULT 'unverified'",
 ]
 
 
@@ -40,7 +56,7 @@ def run_migrations() -> None:
 
     # Step 2: Add new columns to existing tables (idempotent)
     with engine.begin() as conn:
-        for stmt in _DOCUMENT_COLUMN_MIGRATIONS:
+        for stmt in _DOCUMENT_COLUMN_MIGRATIONS + _DOCUMENT_RESULTS_COLUMN_MIGRATIONS:
             try:
                 conn.execute(text(stmt))
                 logger.info("Migration applied: %s", stmt)

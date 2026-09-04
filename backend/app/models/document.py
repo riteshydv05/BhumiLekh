@@ -54,6 +54,13 @@ class Document(Base):
         nullable=True,
     )
 
+    document_type: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        default="Unknown",
+        comment="Classified document type: Sale Deed, RoR, Mutation Record, Lease Deed, etc.",
+    )
+
     # --- AI pipeline fields (all nullable for backward compatibility) ---
 
     task_id: Mapped[str | None] = mapped_column(
