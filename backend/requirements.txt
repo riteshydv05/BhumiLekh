@@ -1,0 +1,40 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+pydantic-settings
+sqlalchemy
+psycopg[binary]
+alembic
+geoalchemy2
+python-jose[cryptography]
+passlib[bcrypt]
+redis
+celery
+minio
+python-dotenv
+# PDF/Image processing
+pypdf
+pypdfium2
+Pillow
+# OCR engines
+paddlepaddle
+paddleocr
+pytesseract
+# Handwriting OCR
+transformers
+accelerate
+tokenizers
+sentencepiece
+torch
+torchvision
+# Language detection
+langdetect
+python-magic
+# LayoutLMv3 document understanding
+datasets
+evaluate
+# Testing
+pytest
+pytest-asyncio
+httpx
