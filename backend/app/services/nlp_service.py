@@ -111,12 +111,34 @@ INDIC_LANGUAGES.add("en")
 # Dataclasses — structured entity storage (separate from raw OCR)
 # ---------------------------------------------------------------------------
 
+_ENTITY_TO_FIELD_NAME_MAP: dict[str, str] = {
+    "VILLAGE": "village",
+    "TEHSIL": "taluka",
+    "DISTRICT": "district",
+    "AREA": "area_hectares",
+    "DATE": "registration_date",
+    "SURVEY_NUMBER": "survey_number",
+    "KHASRA_NUMBER": "khasra_number",
+    "KHATA_NUMBER": "khata_number",
+    "PLOT_NUMBER": "plot_number",
+    "OWNER_NAME": "owner_name",
+    "FATHER_NAME": "father_name",
+    "MOTHER_NAME": "mother_name",
+    "REGISTRATION_NUMBER": "registration_number",
+    "MUTATION_NUMBER": "mutation_number",
+}
+
+
 @dataclass
 class LandRecordEntity:
     """A single extracted entity from land-record text."""
 
     entity_type: str
     extracted_value: str
+    original_text: str = ""
+    normalized_text: str = ""
+    transliteration: str = ""
+    translation: str | None = None
     source_text: str = ""
     page: int = 1
     bounding_box: list[float] | None = None
@@ -125,10 +147,36 @@ class LandRecordEntity:
     language: str = "en"
     timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
 
+    @property
+    def field_name(self) -> str:
+        if hasattr(self, "_custom_field_name") and self._custom_field_name:
+            return self._custom_field_name
+        upper_type = (self.entity_type or "").upper()
+        return _ENTITY_TO_FIELD_NAME_MAP.get(upper_type, self.entity_type.lower() if self.entity_type else "")
+
+    @field_name.setter
+    def field_name(self, value: str) -> None:
+        self._custom_field_name = value
+        self.entity_type = value
+
+    @property
+    def field_value(self) -> str:
+        return self.extracted_value
+
+    @field_value.setter
+    def field_value(self, value: str) -> None:
+        self.extracted_value = value
+
     def to_dict(self) -> dict:
         return {
             "entity_type": self.entity_type,
             "extracted_value": self.extracted_value,
+            "field_name": self.field_name,
+            "field_value": self.field_value,
+            "original_text": self.original_text or self.source_text or self.extracted_value,
+            "normalized_text": self.normalized_text or self.extracted_value,
+            "transliteration": self.transliteration,
+            "translation": self.translation,
             "source_text": self.source_text,
             "page": self.page,
             "bounding_box": self.bounding_box,
@@ -137,6 +185,29 @@ class LandRecordEntity:
             "language": self.language,
             "timestamp": self.timestamp,
         }
+
+
+class ExtractedField(LandRecordEntity):
+    """Backward-compatible class supporting field_name and field_value positional/keyword arguments."""
+
+    def __init__(
+        self,
+        field_name: str = "",
+        field_value: str = "",
+        confidence: float = 0.0,
+        entity_type: str = "",
+        extracted_value: str = "",
+        **kwargs: Any,
+    ) -> None:
+        final_entity_type = entity_type or field_name
+        final_extracted_value = extracted_value or field_value
+        super().__init__(
+            entity_type=final_entity_type,
+            extracted_value=final_extracted_value,
+            confidence=confidence,
+            **kwargs,
+        )
+        self._custom_field_name = field_name or entity_type
 
 
 @dataclass
@@ -274,7 +345,7 @@ _LAND_RECORD_PATTERNS: dict[str, list[tuple[re.Pattern[str], float]]] = {
     ],
     "hi": [
         (re.compile(
-            r"(?:सर्वे\s*नं\.?|सर्वे\s*नम्बर|सर्वे)\s*[:\-]?\s*([०-९A-Z\/\-\.]+)",
+            r"(?:सर्वे\s*नं\.?|सर्वे\s*नम्बर|सर्वे)\s*[:\-]?\s*([0-9०-९A-Za-z\/\-\.]+)",
             re.IGNORECASE,
         ), 0.90),
         (re.compile(
@@ -284,11 +355,11 @@ _LAND_RECORD_PATTERNS: dict[str, list[tuple[re.Pattern[str], float]]] = {
     ],
     "mr": [
         (re.compile(
-            r"(?:सर्वे\s*नं\.?|सर्वे\s*नम्बर)\s*[:\-]?\s*([०-९A-Z\/\-\.]+)",
+            r"(?:सर्वे\s*नं\.?|सर्वे\s*नम्बर|सर्वे)\s*[:\-]?\s*([0-9०-९A-Za-z\/\-\.]+)",
             re.IGNORECASE,
         ), 0.90),
         (re.compile(
-            r"(?:गाव)\s*[:\-]?\s*([अ-ऑA-Za-z\u0900-\u097F]{2,25})",
+            r"(?:गाव|गाँव)\s*[:\-]?\s*([अ-ऑA-Za-z\u0900-\u097F]{2,25})",
             re.IGNORECASE,
         ), 0.80),
     ],
@@ -390,33 +461,45 @@ def _pattern_to_entity(pattern: re.Pattern[str]) -> str | None:
 
     # Keywords and their entity types - checked in order (specific first)
     keywords: list[tuple[str, str]] = [
-        ("registration\s*date", "DATE"),
-        ("date\s*of\s*registration", "DATE"),
-        ("executed\s*on", "DATE"),
-        ("hectare", "AREA"),
-        ("acre", "AREA"),
-        ("square", "AREA"),
-        ("survey", "SURVEY_NUMBER"),
-        ("khasra", "KHASRA_NUMBER"),
-        ("khata", "KHATA_NUMBER"),
-        ("plot", "PLOT_NUMBER"),
-        ("village", "VILLAGE"),
-        ("tehsil", "TEHSIL"),
-        ("district", "DISTRICT"),
-        ("registration\s*no", "REGISTRATION_NUMBER"),
-        ("document\s*no", "REGISTRATION_NUMBER"),
-        ("deed\s*no", "REGISTRATION_NUMBER"),
-        ("mutation", "MUTATION_NUMBER"),
-        ("owner", "OWNER_NAME"),
-        ("father", "FATHER_NAME"),
-        ("mother", "MOTHER_NAME"),
+        (r"registration\s*date", "DATE"),
+        (r"date\s*of\s*registration", "DATE"),
+        (r"executed\s*on", "DATE"),
+        (r"hectare", "AREA"),
+        (r"acre", "AREA"),
+        (r"square", "AREA"),
+        (r"survey", "SURVEY_NUMBER"),
+        (r"सर्वे", "SURVEY_NUMBER"),
+        (r"khasra", "KHASRA_NUMBER"),
+        (r"खसरा", "KHASRA_NUMBER"),
+        (r"khata", "KHATA_NUMBER"),
+        (r"खाता", "KHATA_NUMBER"),
+        (r"plot", "PLOT_NUMBER"),
+        (r"गट", "PLOT_NUMBER"),
+        (r"village", "VILLAGE"),
+        (r"gaon", "VILLAGE"),
+        (r"गाव", "VILLAGE"),
+        (r"गाँव", "VILLAGE"),
+        (r"ग्राम", "VILLAGE"),
+        (r"tehsil", "TEHSIL"),
+        (r"taluka", "TEHSIL"),
+        (r"तहसील", "TEHSIL"),
+        (r"तालुका", "TEHSIL"),
+        (r"district", "DISTRICT"),
+        (r"zilla", "DISTRICT"),
+        (r"जिला", "DISTRICT"),
+        (r"जिल्हा", "DISTRICT"),
+        (r"registration\s*no", "REGISTRATION_NUMBER"),
+        (r"document\s*no", "REGISTRATION_NUMBER"),
+        (r"deed\s*no", "REGISTRATION_NUMBER"),
+        (r"mutation", "MUTATION_NUMBER"),
+        (r"owner", "OWNER_NAME"),
+        (r"father", "FATHER_NAME"),
+        (r"mother", "MOTHER_NAME"),
     ]
 
     for keyword, entity_type in keywords:
-        # Extract base words from the regex keyword for substring matching
-        # e.g., "registration\s*no" -> check if both "registration" and "no" are in clean
-        words = re.findall(r'[a-z]+', keyword.lower())
-        if all(w in clean for w in words):
+        words = [w for w in re.split(r'[\s\\\*\+\?]+', keyword) if w and not w.startswith('(')]
+        if words and all(w in clean for w in words):
             return entity_type
     return None
 
@@ -482,24 +565,29 @@ def _ner_based_extract(
 
 
 def extract_entities(
-    ocr_result: dict,
+    ocr_result_or_text: dict | str,
+    language: str = "en",
 ) -> ExtractionResult:
-    """Extract land-record entities from OCR results.
-
-    Pipeline:
-        1. Detect language from OCR text
-        2. Try NER model extraction (if available and language supported)
-        3. Fall back to rule-based extraction
-        4. Merge results (NER takes priority, rules supplement)
-        5. Return structured ExtractionResult with status
+    """Extract land-record entities from OCR results or plain text.
 
     Args:
-        ocr_result: OCR output dict with "pages" key containing page data
-                    with "blocks" (each with "text", "bbox", "confidence", etc.).
+        ocr_result_or_text: OCR output dict with "pages" key OR plain text string.
+        language: Detected language code (e.g. 'en', 'hi', 'mr'). Used if string is passed.
 
     Returns:
         ExtractionResult with entities and status information.
     """
+    if isinstance(ocr_result_or_text, str):
+        lines = [line.strip() for line in ocr_result_or_text.split("\n") if line.strip()]
+        blocks = [{"text": line, "bbox": None, "confidence": 1.0} for line in lines]
+        ocr_result = {
+            "pages": [{"page": 1, "blocks": blocks}],
+            "method": "plain_text",
+            "language": language,
+        }
+    else:
+        ocr_result = ocr_result_or_text or {}
+
     pages = ocr_result.get("pages", [])
     method = ocr_result.get("method", "none")
 
@@ -586,6 +674,14 @@ def extract_entities(
         if e.entity_type not in seen_types:
             seen_types.add(e.entity_type)
             merged_entities.append(e)
+
+    # Enrich all entities with multilingual normalization/transliteration/translation
+    try:
+        from app.services.multilingual_service import enrich_entity
+        for entity in merged_entities:
+            enrich_entity(entity)
+    except Exception as exc:
+        logger.warning("Multilingual enrichment error: %s", exc)
 
     # Determine extraction method
     if ner_available and merged_entities:

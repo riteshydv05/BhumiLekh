@@ -34,6 +34,10 @@ python-magic
 # LayoutLMv3 document understanding
 datasets
 evaluate
+# Machine Learning & Anomaly Detection
+scikit-learn>=1.3.0
+numpy>=1.24.0
+
 # Testing
 pytest
 pytest-asyncio

@@ -30,17 +30,44 @@ class Settings(BaseSettings):
     PDF_MAX_PAGES: int = 50
 
     # LayoutLMv3 document understanding configuration
-    # Base checkpoint for general document structure detection.
-    # Fine-tuning on land-record datasets is required for field-level classification.
     LAYOUTLMV3_MODEL_NAME: str = "microsoft/layoutlmv3-base"
     LAYOUTLMV3_USE_CUDA: bool = False  # Set to True if GPU is available
     LAYOUTLMV3_MAX_LENGTH: int = 512  # Max tokens per page
     LAYOUTLMV3_NORMALIZE_COORD: int = 1000  # LayoutLMv3 coordinate range
 
+    # ---------------------------------------------------------------------------
+    # Optional External API Integration Layer (Offline-First Defaults)
+    # ---------------------------------------------------------------------------
+    # Bhashini Hosted Translation & Transliteration
+    ENABLE_BHASHINI: bool = False
+    BHASHINI_API_KEY: str = ""
+    BHASHINI_API_URL: str = ""
+    BHASHINI_TIMEOUT: float = 5.0
+
+    # VLM (Vision-Language Model) Fallback Escalation
+    ENABLE_VLM_FALLBACK: bool = False
+    VLM_CONFIDENCE_THRESHOLD: float = 0.60
+    DEFAULT_VLM_PROVIDER: str = "gemini"  # 'gemini', 'openai', 'anthropic'
+
+    # External Provider Keys (Must default to empty string / None)
+    GEMINI_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
+    ANTHROPIC_API_KEY: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",
     )
+
+
+def mask_secret(secret: str | None) -> str:
+    """Mask sensitive API keys for safe logging (e.g. 'sk-****1234' or '<not-configured>')."""
+    if not secret or not secret.strip():
+        return "<not-configured>"
+    s = secret.strip()
+    if len(s) <= 8:
+        return "********"
+    return f"{s[:4]}****{s[-4:]}"
 
 
 settings = Settings()

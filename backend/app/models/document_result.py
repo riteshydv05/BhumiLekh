@@ -38,6 +38,30 @@ class DocumentResult(Base):
         comment="Extracted value as string",
     )
 
+    original_text: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Original raw OCR text preserved",
+    )
+
+    normalized_text: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Normalized text representation with standard digits/prefixes",
+    )
+
+    transliteration: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Phonetic Latin/Roman transliteration",
+    )
+
+    translation: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Semantic English translation (None for identifiers)",
+    )
+
     confidence: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,

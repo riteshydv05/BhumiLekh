@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-main: #F8F9FA;
+  --text-main: #1F2937;
+  --text-heading: #111827;
+  --border-color: #D1D5DB;
+  --gov-yellow: #E89B1C;
+  --gov-saffron: #E05A10;
+}
+
+/* Base styling */
+body {
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Text Size Scaling */
+html.text-size-normal {
+  font-size: 16px;
+}
+html.text-size-large {
+  font-size: 18px;
+}
+html.text-size-larger {
+  font-size: 20px;
+}
+
+/* High Contrast Mode (Light Theme High-Contrast - NEVER Dark Mode) */
+html.high-contrast {
+  --bg-main: #FFFFFF;
+  --text-main: #000000;
+  --text-heading: #000000;
+  --border-color: #000000;
+}
+
+html.high-contrast body {
+  background-color: #FFFFFF !important;
+  color: #000000 !important;
+}
+
+html.high-contrast .gov-card,
+html.high-contrast .bg-white {
+  background-color: #FFFFFF !important;
+  border: 2px solid #000000 !important;
+  color: #000000 !important;
+}
+
+html.high-contrast input,
+html.high-contrast select,
+html.high-contrast textarea {
+  border: 2px solid #000000 !important;
+  color: #000000 !important;
+  background-color: #FFFFFF !important;
+}
+
+html.high-contrast button {
+  font-weight: 700 !important;
+  border: 2px solid #000000 !important;
+}
+
+html.high-contrast a {
+  text-decoration: underline !important;
+  font-weight: 600 !important;
+}
+
+/* Accessible focus ring */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #E05A10;
+  outline-offset: 2px;
+}
+
+/* Government Card Styling */
+.gov-card {
+  background-color: #FFFFFF;
+  border: 1px solid #E5E7EB;
+  border-radius: 4px;
+}
+
+/* Leaflet map styles */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+}

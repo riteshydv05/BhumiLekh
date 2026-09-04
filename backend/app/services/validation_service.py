@@ -242,6 +242,19 @@ def detect_anomalies(
             "Extracted text is very short — document may require manual review"
         )
 
+    # 7. Scikit-learn IsolationForest ML Anomaly Signal
+    try:
+        from app.services.anomaly_service import detect_anomalies as detect_ml_anomalies
+        ml_res = detect_ml_anomalies(fields)
+        if ml_res.anomaly_flag:
+            anomalies.append(
+                f"IsolationForest ML anomaly signal ({ml_res.risk_classification} risk, "
+                f"score={ml_res.anomaly_score:.2f}) — requires human verification"
+            )
+            logger.info("ML IsolationForest anomaly result: %s", ml_res.to_dict())
+    except Exception as exc:
+        logger.warning("ML Anomaly detection call skipped due to error: %s", exc)
+
     if anomalies:
         validation.requires_human_review = True
         logger.warning(
