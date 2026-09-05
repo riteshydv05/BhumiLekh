@@ -7,9 +7,9 @@ import Navigation from "@/components/layout/Navigation";
 import Footer from "@/components/layout/Footer";
 
 export const metadata: Metadata = {
-  title: "Intelligent Land Record Digitization and Validation System",
+  title: "BhumiLekh (भूमिलेख) — National Land Record Portal",
   description:
-    "Indian Government Digital Land Records Management Portal for Multilingual OCR, Entity Extraction, Land Validation, and Anomaly Detection.",
+    "BhumiLekh: Indian Government Digital Land Records Management Portal for Multilingual OCR, Entity Extraction, Land Validation, and Anomaly Detection.",
 };
 
 export default function RootLayout({

@@ -14,7 +14,7 @@ export const translations: Record<string, Record<string, string>> = {
 
     // Header
     "header.dept": "भूमि संसाधन विभाग | Department of Land Resources",
-    "header.title": "Intelligent Land Record Digitization and Validation System",
+    "header.title": "BhumiLekh (भूमिलेख) — National Land Record Portal",
     "header.subtitle": "Digital Land Records Management Portal • राष्ट्रीय भू-अभिलेख प्रबंधन",
     "header.aiStatus": "AI Services Active",
     "header.localPipeline": "Local Indic Pipeline",
@@ -31,7 +31,7 @@ export const translations: Record<string, Record<string, string>> = {
 
     // Home Page Hero
     "hero.tagline": "National Prototype Initiative • SIH / Government Digital Services",
-    "hero.title": "Intelligent Land Record Digitization and Validation System",
+    "hero.title": "BhumiLekh (भूमिलेख) — Land Record Digitization & Validation System",
     "hero.desc": "Upload land records, digitize multilingual documents, extract structured information, validate records, and review results through human-in-the-loop audit pipelines.",
     "hero.uploadBtn": "Upload Land Record",
     "hero.docsBtn": "View My Documents",
@@ -146,7 +146,7 @@ export const translations: Record<string, Record<string, string>> = {
     "footer.tagline": "Powered by AI-assisted document digitization and validation • Indic Multi-engine Pipeline",
     "footer.services": "Portal Services",
     "footer.legal": "Help & Compliance",
-    "footer.copyright": "Intelligent Land Record Digitization and Validation System. All rights reserved.",
+    "footer.copyright": "BhumiLekh (भूमिलेख) — National Land Record Portal. All rights reserved.",
   },
 
   hi: {
@@ -159,7 +159,7 @@ export const translations: Record<string, Record<string, string>> = {
 
     // Header
     "header.dept": "भूमि संसाधन विभाग | ग्रामीण विकास मंत्रालय",
-    "header.title": "इंटेलिजेंट भू-अभिलेख डिजिटलीकरण एवं सत्यापन प्रणाली",
+    "header.title": "भूमिलेख (BhumiLekh) — राष्ट्रीय भू-अभिलेख प्रबंधन एवं सत्यापन पोर्टल",
     "header.subtitle": "डिजिटल भू-अभिलेख प्रबंधन पोर्टल • राष्ट्रीय भू-अभिलेख प्रबंधन",
     "header.aiStatus": "एआई सेवाएं सक्रिय",
     "header.localPipeline": "स्थानीय इंडिक पाइपलाइन",
@@ -176,7 +176,7 @@ export const translations: Record<string, Record<string, string>> = {
 
     // Home Page Hero
     "hero.tagline": "राष्ट्रीय प्रोटोटाइप पहल • स्मार्ट इंडिया हैकाथॉन / डिजिटल भारत",
-    "hero.title": "इंटेलिजेंट भू-अभिलेख डिजिटलीकरण एवं सत्यापन प्रणाली",
+    "hero.title": "भूमिलेख (BhumiLekh) — राष्ट्रीय भू-अभिलेख प्रबंधन एवं सत्यापन प्रणाली",
     "hero.desc": "भू-अभिलेख अपलोड करें, बहुभाषी दस्तावेज़ों का डिजिटलीकरण करें, संरचित जानकारी निकालें, विसंगतियों की पुष्टि करें और सत्यापन करें।",
     "hero.uploadBtn": "भू-अभिलेख अपलोड करें",
     "hero.docsBtn": "मेरे दस्तावेज़ देखें",
@@ -291,7 +291,7 @@ export const translations: Record<string, Record<string, string>> = {
     "footer.tagline": "एआई-संवर्धित भू-अभिलेख डिजिटलीकरण एवं सत्यापन • स्थानीय इंडिक इंजन",
     "footer.services": "पोर्टल सेवाएं",
     "footer.legal": "सहायता एवं नीतियां",
-    "footer.copyright": "इंटेलिजेंट भू-अभिलेख डिजिटलीकरण एवं सत्यापन प्रणाली। सर्वाधिकार सुरक्षित।",
+    "footer.copyright": "भूमिलेख (BhumiLekh) — राष्ट्रीय भू-अभिलेख पोर्टल। सर्वाधिकार सुरक्षित।",
   },
 
   mr: {
@@ -304,7 +304,7 @@ export const translations: Record<string, Record<string, string>> = {
 
     // Header
     "header.dept": "भूमी संसाधन विभाग | ग्रामीण विकास मंत्रालय",
-    "header.title": "इंटेलिजंट भू-अभिलेख डिजिटायझेशन व प्रमाणीकरण प्रणाली",
+    "header.title": "भूमीलेख (BhumiLekh) — राष्ट्रीय भू-अभिलेख व्यवस्थापन व प्रमाणीकरण प्रणाली",
     "header.subtitle": "डिजिटल भू-अभिलेख व्यवस्थापन पोर्टल • राष्ट्रीय भू-अभिलेख प्रणाली",
     "header.aiStatus": "एआय सेवा सक्रिय",
     "header.localPipeline": "स्थानिक इंडिक पाइपलाइन",
@@ -321,7 +321,7 @@ export const translations: Record<string, Record<string, string>> = {
 
     // Home Page Hero
     "hero.tagline": "राष्ट्रीय प्रोटोटाइप उपक्रम • स्मार्ट इंडिया हॅकाथॉन",
-    "hero.title": "इंटेलिजंट भू-अभिलेख डिजिटायझेशन व प्रमाणीकरण प्रणाली",
+    "hero.title": "भूमीलेख (BhumiLekh) — राष्ट्रीय भू-अभिलेख व्यवस्थापन प्रणाली",
     "hero.desc": "जमिनीचे ७/१२ उतारे, फेरफार नोंदी अपलोड करा, बहुभाषिक कागदपत्रांचे डिजिटायझेशन करा, आणि विसंगतींची पडताळणी करा.",
     "hero.uploadBtn": "जमीन दस्तऐवज अपलोड करा",
     "hero.docsBtn": "माझी कागदपत्रे पहा",
@@ -436,7 +436,7 @@ export const translations: Record<string, Record<string, string>> = {
     "footer.tagline": "एआय-समर्थित भू-अभिलेख डिजिटायझेशन • स्थानिक इंडिक इंजिन",
     "footer.services": "पोर्टल सेवा",
     "footer.legal": "मदत व कायदेशीर अटी",
-    "footer.copyright": "इंटेलिजंट भू-अभिलेख डिजिटायझेशन व प्रमाणीकरण प्रणाली. सर्व हक्क राखीव.",
+    "footer.copyright": "भूमीलेख (BhumiLekh) — राष्ट्रीय भू-अभिलेख प्रणाली. सर्व हक्क राखीव.",
   },
 };
 
