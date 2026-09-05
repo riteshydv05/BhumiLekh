@@ -1,768 +1,418 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import Link from "next/link";
 import {
-  UploadCloud,
-  FileText,
-  ShieldCheck,
-  Map,
-  ArrowRight,
-  Cpu,
-  CheckCircle2,
-  Database,
-  Layers,
   Sparkles,
-  Search,
-  Building2,
-  Calendar,
-  AlertTriangle,
-  Download,
-  ExternalLink,
-  Shield,
-  Activity,
-  FileSpreadsheet,
-  Globe2,
-  Compass,
-  PhoneCall,
-  Info,
+  ArrowRight,
+  Check,
+  ShieldCheck,
+  FileText,
+  Map,
+  UploadCloud,
   CheckCircle,
+  Database,
+  Cpu,
+  Layers,
+  Globe2,
+  Activity,
+  AlertTriangle,
+  Scale,
+  Clock,
+  Search,
+  BarChart3,
+  Building,
+  ScanText,
+  Users
 } from "lucide-react";
-import { getDocuments, DocumentItem } from "@/lib/api";
-import { useTranslation } from "@/context/AccessibilityContext";
 
-export default function HomePage() {
-  const [documents, setDocuments] = useState<DocumentItem[]>([]);
-  const [docCount, setDocCount] = useState<number | null>(null);
-  const { t } = useTranslation();
-
-  // Universal Search State
-  const [searchTab, setSearchTab] = useState<"khasra" | "ulpin" | "owner" | "docid">("khasra");
-  const [searchDistrict, setSearchDistrict] = useState("Lucknow");
-  const [searchTehsil, setSearchTehsil] = useState("Sadar");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<any[] | null>(null);
-  const [searchLoading, setSearchLoading] = useState(false);
-
-  useEffect(() => {
-    getDocuments()
-      .then((docs) => {
-        setDocuments(docs);
-        setDocCount(docs.length);
-      })
-      .catch(() => {
-        setDocuments([]);
-        setDocCount(null);
-      });
-  }, []);
-
-  // Universal search handler
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSearchLoading(true);
-
-    setTimeout(() => {
-      // Search in loaded documents or fallback to reference synthetic data
-      const q = searchQuery.trim().toLowerCase();
-      let matched = documents.filter((d) =>
-        d.filename.toLowerCase().includes(q) || d.id.toLowerCase().includes(q)
-      );
-
-      // Add synthetic matching reference data if query matches known demo records
-      if (q.includes("123") || q.includes("rajesh") || q.includes("chandpur") || searchTab === "khasra") {
-        setSearchResults([
-          {
-            id: matched[0]?.id || "demo-rec-1",
-            survey_number: "123/4",
-            khasra_number: "456",
-            khata_number: "78",
-            owner_name: "Rajesh Kumar s/o Mohan Lal",
-            village: "Chandpur",
-            tehsil: searchTehsil,
-            district: searchDistrict,
-            area: "2.5 Hectares",
-            land_classification: "Agricultural (कृषि)",
-            mutation_status: "Verified & Registered (पुष्टीकृत)",
-            ulpin: "UP-LKO-SAD-001234",
-            matched_doc_id: matched[0]?.id || null,
-          },
-        ]);
-      } else if (q.includes("567") || q.includes("sunita") || q.includes("barabanki")) {
-        setSearchResults([
-          {
-            id: matched[0]?.id || "demo-rec-2",
-            survey_number: "567/8",
-            khasra_number: "890",
-            khata_number: "34",
-            owner_name: "Sunita Devi w/o Ram Prasad",
-            village: "Barabanki Rural",
-            tehsil: "Nawabganj",
-            district: "Barabanki",
-            area: "1.2 Acres",
-            land_classification: "Residential (आवासीय)",
-            mutation_status: "Verified & Registered (पुष्टीकृत)",
-            ulpin: "UP-BBK-NWG-005678",
-            matched_doc_id: matched[0]?.id || null,
-          },
-        ]);
-      } else if (matched.length > 0) {
-        setSearchResults(
-          matched.map((m) => ({
-            id: m.id,
-            survey_number: "Auto-Detected",
-            khasra_number: "Khasra/" + m.id.substring(0, 4),
-            khata_number: "Khata/" + m.id.substring(4, 7),
-            owner_name: "Registry Document Record",
-            village: "District Jurisdiction",
-            tehsil: searchTehsil,
-            district: searchDistrict,
-            area: "Computed from Scan",
-            land_classification: "Revenue Record",
-            mutation_status: m.status,
-            ulpin: "ULPIN-" + m.id.substring(0, 8).toUpperCase(),
-            matched_doc_id: m.id,
-          }))
-        );
-      } else {
-        setSearchResults([]);
-      }
-
-      setSearchLoading(false);
-    }, 300);
-  };
-
-  const handleQuickPick = (sample: string) => {
-    setSearchQuery(sample);
-    setSearchLoading(true);
-    setTimeout(() => {
-      setSearchResults([
-        {
-          id: documents[0]?.id || "demo-rec-1",
-          survey_number: sample,
-          khasra_number: sample === "123/4" ? "456" : "890",
-          khata_number: sample === "123/4" ? "78" : "34",
-          owner_name: sample === "123/4" ? "Rajesh Kumar" : "Sunita Devi",
-          village: sample === "123/4" ? "Chandpur" : "Nawabganj",
-          tehsil: "Sadar",
-          district: "Lucknow",
-          area: sample === "123/4" ? "2.5 Hectares" : "1.2 Acres",
-          land_classification: "Agricultural",
-          mutation_status: "VERIFIED",
-          ulpin: "UP-LKO-SAD-001234",
-          matched_doc_id: documents[0]?.id || null,
-        },
-      ]);
-      setSearchLoading(false);
-    }, 200);
-  };
-
+export default function LandingPage() {
   return (
-    <div className="space-y-6 pb-12">
-      {/* 1. Official Government Rolling Gazette Marquee Ticker */}
-      <div className="bg-amber-100/90 border-b border-amber-300 text-amber-950 py-1.5 px-3 overflow-hidden">
+    <div className="min-h-screen bg-white text-gray-900">
+      {/* 1. Official Government Rolling Bulletin */}
+      <div className="bg-amber-100 border-b border-amber-300 text-amber-950 py-1.5 px-3 overflow-hidden">
         <div className="max-w-7xl mx-auto flex items-center gap-2 text-xs">
-          <span className="bg-amber-700 text-white text-[10px] font-bold px-2 py-0.5 rounded shrink-0 uppercase tracking-wider flex items-center gap-1">
+          <span className="bg-amber-700 text-white text-[10px] font-bold px-2 py-0.5 rounded shrink-0 uppercase tracking-wider flex items-center gap-1 shadow-xs">
             <Activity className="w-3 h-3" />
-            राजपत्र • Gazette Notice
+            Official Bulletin
           </span>
 
           <div className="overflow-hidden relative w-full">
-            <div className="animate-marquee font-medium text-[11px] space-x-8">
+            <div className="animate-marquee font-medium text-[11px] space-x-8 text-amber-900">
               <span>
-                📢 <strong>DILRMP Directive 2026:</strong> Mandatory linking of 14-digit Bhu-Aadhaar (ULPIN) with digital RoR entries under SVAMITVA Phase-III.
+                <strong>National Initiative:</strong> Implementing Intelligent Land Record Digitization and Validation across regional revenue departments.
               </span>
               <span>•</span>
               <span>
-                📢 <strong>Revenue Court Notice:</strong> Automated Cadastral polygon overlap checking active across all Tehsils.
+                <strong>System Update:</strong> Multilingual OCR support now includes extensive training on historical Devanagari and English cadastral documents.
               </span>
               <span>•</span>
               <span>
-                📢 <strong>Citizen Advisory:</strong> Mutation verification applications under Section 34 can be tracked live in the portal.
-              </span>
-              <span>•</span>
-              <span>
-                📢 <strong>High-Resolution Scans:</strong> AI PaddleOCR engine upgraded with Indic Devanagari & Dravidian script dictionary v4.2.
+                <strong>Security:</strong> All operations are conducted within secure, sovereign infrastructure ensuring data privacy and compliance.
               </span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 2. Official Portal Hero Section */}
-      <section className="bg-white border-b border-gray-200 py-8 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
-        <div className="max-w-6xl mx-auto space-y-6">
-          {/* Header Tagline */}
-          <div className="text-center space-y-3">
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-50 border border-amber-300 text-amber-900 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm">
-              <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
-              <span>{t("hero.tagline")}</span>
+      {/* 2. Hero Section Matching the Bhumilekh Design */}
+      <section className="relative overflow-hidden bg-[#F8F9FA] border-b border-gray-200">
+        {/* Farm & Countryside Background Image with Gradient Overlay */}
+        <div 
+          className="absolute inset-0 z-0 opacity-45 pointer-events-none"
+          style={{
+            backgroundImage: "linear-gradient(to right, rgba(248, 249, 250, 0.96) 0%, rgba(248, 249, 250, 0.82) 48%, rgba(248, 249, 250, 0.35) 100%), url('https://images.unsplash.com/photo-1500382017468-9049fed747ef?q=80&w=2532&auto=format&fit=crop')",
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+        />
+
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 pb-20 lg:pt-20 lg:pb-28 flex flex-col lg:flex-row items-center gap-12 lg:gap-10">
+          {/* Left Column: Hero Text & Call to Actions */}
+          <div className="w-full lg:w-1/2 space-y-6">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold uppercase tracking-wider shadow-xs">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+              <span>AI-Powered Land Record Intelligence</span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-gray-950 tracking-tight leading-tight">
-              {t("hero.title")}
+            <h1 className="text-4xl sm:text-5xl lg:text-[54px] leading-[1.12] font-black text-[#1A365D] tracking-tight">
+              Transforming Legacy <br className="hidden sm:block" />
+              Land Records <br />
+              <span className="text-[#2F855A]">Into Trusted Digital<br /> Records</span>
             </h1>
 
-            <p className="text-xs sm:text-sm text-gray-700 max-w-3xl mx-auto leading-relaxed">
-              Automated offline-first Indic document intelligence for Indian Revenue Authorities. Digitize multilingual historical deeds, extract structured RoR attributes, detect spatial & ownership anomalies, and cross-verify with PostGIS cadastral base maps.
+            <p className="text-base sm:text-lg text-gray-600 leading-relaxed max-w-xl font-medium">
+              Bhumilekh uses AI to digitize, extract, validate and verify information from legacy land records, helping transform unstructured documents into reliable digital records.
             </p>
+
+            <div className="flex flex-wrap items-center gap-2 text-[12px] sm:text-[13px] font-bold text-gray-500 uppercase tracking-widest pt-1">
+              <span>DIGITIZE</span>
+              <span>•</span>
+              <span>EXTRACT</span>
+              <span>•</span>
+              <span>VALIDATE</span>
+              <span>•</span>
+              <span>VERIFY</span>
+              <span>•</span>
+              <span>MAP</span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4 pt-4">
+              <Link
+                href="/upload"
+                className="px-7 py-3.5 bg-[#E05A10] hover:bg-[#C2410C] text-white font-bold rounded-md shadow-lg shadow-orange-600/25 transition-all flex items-center gap-2.5 text-sm uppercase tracking-wider"
+              >
+                <span>Get Started</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+              <Link
+                href="/documents"
+                className="px-6 py-3.5 bg-white/90 backdrop-blur-xs border-2 border-[#1A365D] text-[#1A365D] hover:bg-[#1A365D] hover:text-white font-bold rounded-md transition-all flex items-center gap-2 text-sm uppercase tracking-wider shadow-xs"
+              >
+                <span>Explore How It Works</span>
+              </Link>
+            </div>
           </div>
 
-          {/* 3. Interactive Universal Land Records Search Widget (The mark of an authentic system!) */}
-          <div id="quick-search-section" className="bg-slate-50 border-2 border-amber-600/60 rounded-md shadow-md p-4 sm:p-6 max-w-4xl mx-auto">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-3 gap-2">
-              <div className="flex items-center gap-2">
-                <Search className="w-5 h-5 text-amber-700" />
-                <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">
-                  खतौनी / भूलेख त्वरित खोज • Instant Land Record Search
-                </h2>
-              </div>
-              <span className="text-[11px] text-gray-500 font-medium">Direct National Cadastral Registry Query</span>
+          {/* Right Column: AI Digitization Visual Showcase Image */}
+          <div className="w-full lg:w-1/2 relative lg:pl-4 flex justify-center items-center">
+            <div className="absolute -inset-4 bg-gradient-to-r from-emerald-100/50 to-amber-100/50 blur-3xl -z-10 rounded-3xl" />
+            
+            <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-gray-200/80 bg-white p-1.5 transition-all duration-300 hover:shadow-3xl">
+              <img
+                src="/hero-record-preview.png"
+                alt="From Paper Records to Actionable Data — AI Land Record Digitization and Extraction"
+                className="w-full h-auto object-contain rounded-xl"
+                loading="eager"
+              />
             </div>
-
-            {/* Search Tabs */}
-            <div className="flex items-center gap-1 border-b border-gray-200 mt-3 overflow-x-auto text-xs font-semibold">
-              <button
-                onClick={() => setSearchTab("khasra")}
-                className={`px-3 py-1.5 border-b-2 transition whitespace-nowrap ${
-                  searchTab === "khasra"
-                    ? "border-amber-600 text-amber-800 bg-white"
-                    : "border-transparent text-gray-600 hover:text-gray-900"
-                }`}
-              >
-                1. Khasra / Survey Number (खसरा संख्या)
-              </button>
-              <button
-                onClick={() => setSearchTab("ulpin")}
-                className={`px-3 py-1.5 border-b-2 transition whitespace-nowrap ${
-                  searchTab === "ulpin"
-                    ? "border-amber-600 text-amber-800 bg-white"
-                    : "border-transparent text-gray-600 hover:text-gray-900"
-                }`}
-              >
-                2. ULPIN (Bhu-Aadhaar)
-              </button>
-              <button
-                onClick={() => setSearchTab("owner")}
-                className={`px-3 py-1.5 border-b-2 transition whitespace-nowrap ${
-                  searchTab === "owner"
-                    ? "border-amber-600 text-amber-800 bg-white"
-                    : "border-transparent text-gray-600 hover:text-gray-900"
-                }`}
-              >
-                3. Owner Name (खातेदार का नाम)
-              </button>
-              <button
-                onClick={() => setSearchTab("docid")}
-                className={`px-3 py-1.5 border-b-2 transition whitespace-nowrap ${
-                  searchTab === "docid"
-                    ? "border-amber-600 text-amber-800 bg-white"
-                    : "border-transparent text-gray-600 hover:text-gray-900"
-                }`}
-              >
-                4. Deed / Document ID
-              </button>
-            </div>
-
-            {/* Search Form */}
-            <form onSubmit={handleSearch} className="mt-4 space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 text-xs">
-                {/* District */}
-                <div>
-                  <label className="block text-gray-700 font-bold mb-1">जनपद / District</label>
-                  <select
-                    value={searchDistrict}
-                    onChange={(e) => setSearchDistrict(e.target.value)}
-                    className="w-full border border-gray-300 rounded px-2.5 py-1.5 bg-white text-gray-900 focus:ring-1 focus:ring-amber-500"
-                  >
-                    <option value="Lucknow">Lucknow (लखनऊ)</option>
-                    <option value="Barabanki">Barabanki (बाराबंकी)</option>
-                    <option value="Kanpur">Kanpur (कानपुर)</option>
-                    <option value="Prayagraj">Prayagraj (प्रयागराज)</option>
-                    <option value="Varanasi">Varanasi (वाराणसी)</option>
-                    <option value="Pune">Pune (पुणे - Maharashtra)</option>
-                    <option value="Bengaluru">Bengaluru (Karnataka)</option>
-                  </select>
-                </div>
-
-                {/* Tehsil */}
-                <div>
-                  <label className="block text-gray-700 font-bold mb-1">तहसील / Tehsil</label>
-                  <select
-                    value={searchTehsil}
-                    onChange={(e) => setSearchTehsil(e.target.value)}
-                    className="w-full border border-gray-300 rounded px-2.5 py-1.5 bg-white text-gray-900 focus:ring-1 focus:ring-amber-500"
-                  >
-                    <option value="Sadar">Sadar (सदर)</option>
-                    <option value="Nawabganj">Nawabganj (नवाबगंज)</option>
-                    <option value="Akbarpur">Akbarpur (अकबरपुर)</option>
-                    <option value="Mohanlalganj">Mohanlalganj (मोहनलालगंज)</option>
-                    <option value="BakshiKaTalab">Bakshi Ka Talab (बख्शी का तालाब)</option>
-                  </select>
-                </div>
-
-                {/* Query Input */}
-                <div className="sm:col-span-2">
-                  <label className="block text-gray-700 font-bold mb-1">
-                    {searchTab === "khasra"
-                      ? "Enter Khasra / Survey Number (e.g. 123/4)"
-                      : searchTab === "ulpin"
-                      ? "Enter 14-digit ULPIN (e.g. UP-LKO-SAD-001234)"
-                      : searchTab === "owner"
-                      ? "Enter Full/Partial Owner Name (e.g. Rajesh)"
-                      : "Enter Uploaded Document UUID"}
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder={
-                        searchTab === "khasra"
-                          ? "e.g. 123/4 or 567/8"
-                          : searchTab === "ulpin"
-                          ? "e.g. UP-LKO-SAD-001234"
-                          : searchTab === "owner"
-                          ? "e.g. Rajesh Kumar"
-                          : "e.g. 550e8400-e29b..."
-                      }
-                      className="flex-1 border border-gray-300 rounded px-3 py-1.5 bg-white text-gray-900 font-mono text-xs focus:ring-1 focus:ring-amber-500"
-                    />
-                    <button
-                      type="submit"
-                      disabled={searchLoading}
-                      className="px-4 py-1.5 bg-amber-700 hover:bg-amber-800 text-white font-bold rounded flex items-center gap-1.5 transition shadow-sm whitespace-nowrap"
-                    >
-                      <Search className="w-3.5 h-3.5" />
-                      <span>{searchLoading ? "Searching..." : "Search"}</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Sample Quick-Picks */}
-              <div className="flex items-center gap-2 text-[11px] text-gray-600 flex-wrap pt-1">
-                <span className="font-semibold text-gray-700">Quick Demo Picks:</span>
-                <button
-                  type="button"
-                  onClick={() => handleQuickPick("123/4")}
-                  className="bg-white border border-gray-300 hover:border-amber-600 px-2 py-0.5 rounded font-mono text-amber-900"
-                >
-                  Survey 123/4 (Chandpur, Lucknow)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickPick("567/8")}
-                  className="bg-white border border-gray-300 hover:border-amber-600 px-2 py-0.5 rounded font-mono text-amber-900"
-                >
-                  Survey 567/8 (Barabanki)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickPick("234/1")}
-                  className="bg-white border border-gray-300 hover:border-amber-600 px-2 py-0.5 rounded font-mono text-amber-900"
-                >
-                  Survey 234/1 (Kanpur)
-                </button>
-              </div>
-            </form>
-
-            {/* Search Results Display Area */}
-            {searchResults !== null && (
-              <div className="mt-4 pt-3 border-t border-slate-200">
-                {searchResults.length === 0 ? (
-                  <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded text-xs">
-                    No matching land record found for the provided search criteria. Please verify the survey number or try one of the quick picks above.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="text-[11px] font-bold text-gray-700 uppercase tracking-wide">
-                      Matching Land Record Reference ({searchResults.length} Found):
-                    </p>
-                    {searchResults.map((res, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-white border border-emerald-300 rounded p-3 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs"
-                      >
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-gray-900 text-sm">{res.owner_name}</span>
-                            <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold px-2 py-0.2 rounded uppercase">
-                              {res.mutation_status}
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-gray-600 font-mono text-[11px]">
-                            <span>Survey/Khasra: <strong className="text-gray-900">{res.survey_number} (Khasra {res.khasra_number})</strong></span>
-                            <span>Khata No: <strong className="text-gray-900">{res.khata_number}</strong></span>
-                            <span>Village/Tehsil: <strong className="text-gray-900">{res.village}, {res.tehsil}</strong></span>
-                            <span>Area: <strong className="text-gray-900">{res.area}</strong></span>
-                          </div>
-                          <p className="text-[10px] text-gray-500 font-mono">
-                            ULPIN (Bhu-Aadhaar): <strong className="text-amber-800">{res.ulpin}</strong> | Classification: {res.land_classification}
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          {res.matched_doc_id ? (
-                            <Link
-                              href={`/documents/${res.matched_doc_id}`}
-                              className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white font-semibold rounded text-xs flex items-center gap-1 shadow-sm"
-                            >
-                              <FileText className="w-3.5 h-3.5" />
-                              <span>View Deed</span>
-                            </Link>
-                          ) : (
-                            <Link
-                              href="/documents"
-                              className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white font-semibold rounded text-xs flex items-center gap-1 shadow-sm"
-                            >
-                              <FileText className="w-3.5 h-3.5" />
-                              <span>Open Registry</span>
-                            </Link>
-                          )}
-
-                          <Link
-                            href="/map"
-                            className="px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-800 font-semibold rounded text-xs flex items-center gap-1"
-                          >
-                            <Map className="w-3.5 h-3.5 text-amber-700" />
-                            <span>Locate on GIS Map</span>
-                          </Link>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
       </section>
 
-      {/* 4. Operational Performance Metrics Strip (Real-time Live KPIs) */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <section aria-label="National Registry Operations Summary" className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <div className="gov-card p-3.5 border-l-4 border-l-amber-600">
-            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Total Deeds Digitized</span>
-            <p className="text-xl sm:text-2xl font-black text-gray-950 font-mono mt-1">
-              {docCount !== null ? docCount : "1,248"}
-            </p>
-            <span className="text-[10px] text-emerald-700 font-medium">● Stored in MinIO Vault</span>
-          </div>
-
-          <div className="gov-card p-3.5 border-l-4 border-l-blue-600">
-            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Cadastral Parcels</span>
-            <p className="text-xl sm:text-2xl font-black text-gray-950 font-mono mt-1">428 Mapped</p>
-            <span className="text-[10px] text-blue-700 font-medium">PostGIS Spatial SRID 4326</span>
-          </div>
-
-          <div className="gov-card p-3.5 border-l-4 border-l-emerald-600">
-            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">AI OCR Accuracy</span>
-            <p className="text-xl sm:text-2xl font-black text-gray-950 font-mono mt-1">98.4%</p>
-            <span className="text-[10px] text-emerald-700 font-medium">PaddleOCR + TrOCR Models</span>
-          </div>
-
-          <div className="gov-card p-3.5 border-l-4 border-l-purple-600">
-            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">State LRMS Adapters</span>
-            <p className="text-xl sm:text-2xl font-black text-gray-950 font-mono mt-1">5 Connected</p>
-            <span className="text-[10px] text-purple-700 font-medium">UP, MH, KA, TN, Central</span>
-          </div>
-
-          <div className="gov-card p-3.5 border-l-4 border-l-rose-600 col-span-2 md:col-span-1">
-            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Verification Safeguard</span>
-            <p className="text-xl sm:text-2xl font-black text-gray-950 font-mono mt-1">100% HITL</p>
-            <span className="text-[10px] text-rose-700 font-medium">Revenue Officer Audit Trail</span>
-          </div>
-        </section>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-        {/* 5. Core Operational Services Grid */}
-        <section aria-labelledby="departmental-services-heading">
-          <div className="border-b border-gray-200 pb-2 mb-4 flex items-center justify-between">
-            <div>
-              <h2 id="departmental-services-heading" className="text-sm font-bold text-gray-900 uppercase tracking-wider">
-                राजस्व सेवाएं • Departmental Service Consoles
-              </h2>
-              <p className="text-xs text-gray-500 mt-0.5">Core functional workflows for Citizens, Nodal Officers, and Registrars</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Service 1: Digitize New Deed */}
-            <Link
-              href="/upload"
-              className="gov-card p-4 hover:border-amber-600 hover:shadow-md transition group flex flex-col justify-between"
-            >
-              <div>
-                <div className="w-10 h-10 rounded bg-amber-100 text-amber-800 flex items-center justify-center mb-3">
-                  <UploadCloud className="w-5 h-5" />
-                </div>
-                <h3 className="text-sm font-bold text-gray-900 group-hover:text-amber-700">
-                  1. Digitize & Ingest Deed
-                </h3>
-                <p className="text-xs text-gray-600 mt-1 leading-normal">
-                  Upload PDF, JPEG, PNG, or TIFF scans. Automatically triggers OCR, LayoutLMv3, and Indic entity parsing.
-                </p>
-              </div>
-              <div className="mt-4 pt-2 border-t border-gray-100 flex items-center text-xs font-semibold text-amber-700">
-                <span>Upload Scan →</span>
-                <ArrowRight className="w-3.5 h-3.5 ml-1 transition group-hover:translate-x-1" />
-              </div>
-            </Link>
-
-            {/* Service 2: Land Records Repository */}
-            <Link
-              href="/documents"
-              className="gov-card p-4 hover:border-blue-600 hover:shadow-md transition group flex flex-col justify-between"
-            >
-              <div>
-                <div className="w-10 h-10 rounded bg-blue-100 text-blue-800 flex items-center justify-center mb-3">
-                  <FileText className="w-5 h-5" />
-                </div>
-                <h3 className="text-sm font-bold text-gray-900 group-hover:text-blue-700">
-                  2. Land Record Registry
-                </h3>
-                <p className="text-xs text-gray-600 mt-1 leading-normal">
-                  Search, filter, and inspect state land archives, raw OCR pages, confidence breakdown, and translation layers.
-                </p>
-              </div>
-              <div className="mt-4 pt-2 border-t border-gray-100 flex items-center text-xs font-semibold text-blue-700">
-                <span>Browse Registry →</span>
-                <ArrowRight className="w-3.5 h-3.5 ml-1 transition group-hover:translate-x-1" />
-              </div>
-            </Link>
-
-            {/* Service 3: Verification & HITL */}
-            <Link
-              href="/verify"
-              className="gov-card p-4 hover:border-emerald-600 hover:shadow-md transition group flex flex-col justify-between"
-            >
-              <div>
-                <div className="w-10 h-10 rounded bg-emerald-100 text-emerald-800 flex items-center justify-center mb-3">
-                  <ShieldCheck className="w-5 h-5" />
-                </div>
-                <h3 className="text-sm font-bold text-gray-900 group-hover:text-emerald-700">
-                  3. Audit & Verification
-                </h3>
-                <p className="text-xs text-gray-600 mt-1 leading-normal">
-                  Split-screen officer console for reviewing low-confidence fields, editing values, and resolving flagged anomalies.
-                </p>
-              </div>
-              <div className="mt-4 pt-2 border-t border-gray-100 flex items-center text-xs font-semibold text-emerald-700">
-                <span>Open Audit Station →</span>
-                <ArrowRight className="w-3.5 h-3.5 ml-1 transition group-hover:translate-x-1" />
-              </div>
-            </Link>
-
-            {/* Service 4: Cadastral Map (GIS) */}
-            <Link
-              href="/map"
-              className="gov-card p-4 hover:border-purple-600 hover:shadow-md transition group flex flex-col justify-between"
-            >
-              <div>
-                <div className="w-10 h-10 rounded bg-purple-100 text-purple-800 flex items-center justify-center mb-3">
-                  <Map className="w-5 h-5" />
-                </div>
-                <h3 className="text-sm font-bold text-gray-900 group-hover:text-purple-700">
-                  4. Cadastral Map (GIS)
-                </h3>
-                <p className="text-xs text-gray-600 mt-1 leading-normal">
-                  Interactive PostGIS cadastral parcel boundary viewer with spatial overlap detection, coordinates, and area verification.
-                </p>
-              </div>
-              <div className="mt-4 pt-2 border-t border-gray-100 flex items-center text-xs font-semibold text-purple-700">
-                <span>Open GIS Map →</span>
-                <ArrowRight className="w-3.5 h-3.5 ml-1 transition group-hover:translate-x-1" />
-              </div>
-            </Link>
-          </div>
-        </section>
-
-        {/* 6. State Land Record Management System (LRMS) Integration Grid */}
-        <section aria-labelledby="state-lrms-heading" className="gov-card p-5 bg-gradient-to-b from-white to-slate-50">
-          <div className="border-b border-gray-200 pb-3 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <h2 id="state-lrms-heading" className="text-sm font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
-                <Globe2 className="w-4 h-4 text-amber-700" />
-                <span>Inter-State LRMS & DILRMP Adapter Status</span>
-              </h2>
-              <p className="text-xs text-gray-500 mt-0.5">Real-time cross-database connectivity status with state revenue portals</p>
-            </div>
-            <span className="text-[11px] bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold px-2 py-0.5 rounded">
-              Central Bridge: Active
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            {[
-              {
-                state: "Uttar Pradesh",
-                portal: "Bhulekh (भूलेख)",
-                adapter: "Adapter v2.4 (Active)",
-                records: "RoR, Khasra, Khatauni",
-                status: "ONLINE",
-              },
-              {
-                state: "Maharashtra",
-                portal: "Mahabhumi 7/12",
-                adapter: "Adapter v3.1 (Active)",
-                records: "Satbara Utara, Ferfar",
-                status: "ONLINE",
-              },
-              {
-                state: "Karnataka",
-                portal: "Bhoomi RTC",
-                adapter: "Adapter v2.8 (Active)",
-                records: "Pahani, Mutation Register",
-                status: "ONLINE",
-              },
-              {
-                state: "Tamil Nadu",
-                portal: "AnyRoR / Patta",
-                adapter: "Adapter v1.9 (Active)",
-                records: "Patta, Chitta, FMB",
-                status: "ONLINE",
-              },
-              {
-                state: "Central DILRMP",
-                portal: "National ULPIN Hub",
-                adapter: "Core Registry v4.0",
-                records: "Bhu-Aadhaar, SVAMITVA",
-                status: "ONLINE",
-              },
-            ].map((p, idx) => (
-              <div key={idx} className="p-3 bg-white border border-gray-200 rounded shadow-xs space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-amber-800 uppercase">{p.state}</span>
-                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                </div>
-                <p className="text-xs font-bold text-gray-900">{p.portal}</p>
-                <p className="text-[10px] text-gray-500 font-mono">{p.records}</p>
-                <div className="pt-1 border-t border-gray-100 flex items-center justify-between text-[10px]">
-                  <span className="text-gray-400 font-mono">{p.adapter}</span>
-                  <span className="font-bold text-emerald-700">{p.status}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* 7. How the 5-Stage Digitization Pipeline Operates */}
-        <section aria-labelledby="pipeline-flow-heading" className="gov-card p-5">
-          <div className="border-b border-gray-200 pb-3 mb-4">
-            <h2 id="pipeline-flow-heading" className="text-sm font-bold text-gray-900 uppercase tracking-wide">
-              {t("flow.title")}
+      {/* 3. Why It Matters: Problems with Manual Digitization */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <div className="p-6 sm:p-8 bg-slate-50 border border-gray-200 rounded-lg">
+          <div className="mb-6">
+            <h2 className="text-lg font-bold text-gray-900 uppercase tracking-wide border-b-2 border-amber-600 inline-block pb-1">
+              Why It Matters
             </h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Automated offline-first Indic document intelligence with human-in-the-loop verification safeguard
+            <p className="text-sm text-gray-600 mt-2">
+              The inherent limitations of manual land record administration and why technological intervention is necessary.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white p-5 border border-gray-200 rounded shadow-xs">
+              <AlertTriangle className="w-6 h-6 text-amber-600 mb-2" />
+              <h3 className="text-sm font-bold text-gray-900">Physical Degradation</h3>
+              <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                Decades-old documents are brittle and prone to decay, risking the permanent loss of vital ownership histories.
+              </p>
+            </div>
+            <div className="bg-white p-5 border border-gray-200 rounded shadow-xs">
+              <Clock className="w-6 h-6 text-amber-600 mb-2" />
+              <h3 className="text-sm font-bold text-gray-900">Processing Delays</h3>
+              <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                Manual transcription of complex cadastral documents is severely time-consuming, causing massive administrative backlogs.
+              </p>
+            </div>
+            <div className="bg-white p-5 border border-gray-200 rounded shadow-xs">
+              <Globe2 className="w-6 h-6 text-amber-600 mb-2" />
+              <h3 className="text-sm font-bold text-gray-900">Linguistic Barriers</h3>
+              <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                Records are often recorded in legacy scripts and localized terminology, requiring specialized personnel to decipher.
+              </p>
+            </div>
+            <div className="bg-white p-5 border border-gray-200 rounded shadow-xs">
+              <ShieldCheck className="w-6 h-6 text-amber-600 mb-2" />
+              <h3 className="text-sm font-bold text-gray-900">Human Error & Fraud</h3>
+              <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                Manual data entry is prone to clerical errors and lacks the automated spatial cross-referencing needed to prevent overlapping claims.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 4. System Capabilities: Continuous Process Flow (Without Tech Jargon) */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="mb-6">
+          <h2 className="text-lg font-bold text-gray-900 uppercase tracking-wide border-b-2 border-amber-600 inline-block pb-1">
+            System Capabilities & Operational Flow
+          </h2>
+          <p className="text-sm text-gray-600 mt-2">
+            Step-by-step pipeline for end-to-end digitization, parsing, validation, and archival of historical land deeds.
+          </p>
+        </div>
+
+        <div className="relative border-l-2 border-amber-300 ml-4 md:ml-6 space-y-6 pb-2">
+          {[
+            { 
+              icon: FileText, 
+              title: "1. Document Ingestion", 
+              desc: "Secure intake of historical physical scans (PDF, TIFF, JPEG) into the automated processing queue." 
+            },
+            { 
+              icon: ScanText, 
+              title: "2. Multilingual OCR & HTR", 
+              desc: "Recognizes printed typography and cursive handwritten scripts across English and Devanagari records." 
+            },
+            { 
+              icon: Cpu, 
+              title: "3. Intelligent Entity Extraction", 
+              desc: "Intelligently parses tabular layouts and unstructured legal text to isolate key fields like Khasra, Khatauni, and Area." 
+            },
+            { 
+              icon: AlertTriangle, 
+              title: "4. Confidence Scoring", 
+              desc: "Calculates mathematical certainty scores for every extracted token, flagging low-confidence values for mandatory review." 
+            },
+            { 
+              icon: CheckCircle, 
+              title: "5. Semantic & Mathematical Validation", 
+              desc: "Cross-checks numeric formats, dates, boundary descriptions, and parcel areas to ensure strict internal consistency." 
+            },
+            { 
+              icon: Map, 
+              title: "6. Cadastral GIS Alignment", 
+              desc: "Connects textual deeds with spatial parcel maps to verify boundaries and prevent fraudulent overlapping registrations." 
+            },
+            { 
+              icon: Users, 
+              title: "7. Revenue Officer Verification", 
+              desc: "Enables authorized revenue officers to audit flagged records side-by-side with original scanned documents." 
+            },
+            { 
+              icon: Database, 
+              title: "8. Sovereign Digital Registry", 
+              desc: "Secures finalized records in an immutable, legally verifiable digital repository accessible across departmental nodes." 
+            }
+          ].map((step, idx) => (
+            <div key={idx} className="relative pl-8 md:pl-10">
+              <div className="absolute -left-[17px] top-1.5 w-8 h-8 bg-white border-2 border-amber-600 rounded-full flex items-center justify-center shadow-xs">
+                <step.icon className="w-4 h-4 text-amber-700" />
+              </div>
+              <div className="bg-white border border-gray-200 p-4 rounded-lg shadow-xs hover:border-amber-400 transition-colors">
+                <h3 className="text-base font-bold text-gray-900 mb-1">{step.title}</h3>
+                <p className="text-sm text-gray-600 leading-relaxed">{step.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* 5. What We Built (Full Width Platform Architecture - No Tech Stack) */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="bg-slate-50 border border-gray-200 p-6 sm:p-8 rounded-lg">
+          <h2 className="text-lg font-bold text-gray-900 uppercase tracking-wide border-b-2 border-amber-600 inline-block pb-1 mb-4">
+            What We Built
+          </h2>
+          <p className="text-sm text-gray-700 leading-relaxed mb-6 max-w-4xl">
+            An institutional-grade platform engineered to digitize, index, and validate complex regional land registries. Designed specifically for offline or air-gapped sovereign deployment inside state and national data centers.
+          </p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {[
               {
-                step: "1",
-                stage: "Ingestion & Vault",
-                desc: "Uploaded PDF/TIFF scans are checksum-verified (SHA-256) and secured in S3 MinIO storage.",
+                title: "Asynchronous Processing Engine",
+                desc: "Handles large-scale historical document archives and multi-page deed batches without bottlenecking frontline operations."
               },
               {
-                step: "2",
-                stage: "Dual OCR Engine",
-                desc: "PaddleOCR transcribes 13 printed Indic scripts; Microsoft TrOCR reads Patwari cursive handwriting.",
+                title: "Specialized Document Understanding",
+                desc: "Models tailored for regional cadastral nomenclature, non-standard tabular formats, and legacy handwriting."
               },
               {
-                step: "3",
-                stage: "Spatial VDU & LayoutLM",
-                desc: "LayoutLMv3 maps 2D bounding boxes to canonical fields (Owner, Khasra, Khata, Area, Dates).",
+                title: "Tehsildar Audit Station",
+                desc: "Interactive split-screen interface allowing officers to verify original scans against extracted values with single-click sign-off."
               },
               {
-                step: "4",
-                stage: "Anomaly & GIS Check",
-                desc: "IsolationForest & PostGIS detect boundary disputes, illegal sub-divisions, and duplicate sales.",
+                title: "Cadastral GIS Cross-Referencing",
+                desc: "Direct integration between textual legal deeds and digitized village maps to immediately detect overlapping boundary disputes."
               },
               {
-                step: "5",
-                stage: "HITL Officer Review",
-                desc: "Revenue officers audit flagged deeds in split-screen console, continuously improving model weights.",
+                title: "Role-Based Administrative Control",
+                desc: "Strict compartmentalization separating citizen viewing, verification officer auditing, and administrative governance."
               },
-            ].map((item) => (
-              <div key={item.step} className="p-3 bg-gray-50 border border-gray-200 rounded flex flex-col justify-between">
-                <div>
-                  <span className="w-6 h-6 rounded-full bg-amber-700 text-white font-bold text-xs flex items-center justify-center mb-2">
-                    {item.step}
-                  </span>
-                  <h4 className="text-xs font-bold text-gray-900">{item.stage}</h4>
-                  <p className="text-[11px] text-gray-600 mt-1 leading-relaxed">{item.desc}</p>
+              {
+                title: "Tamper-Evident Digital Repository",
+                desc: "Permanent record storage ensuring chain-of-custody tracking, cryptographic audit trails, and instant legal retrieval."
+              }
+            ].map((item, idx) => (
+              <div key={idx} className="bg-white p-4 border border-gray-200 rounded shadow-xs">
+                <div className="flex items-center gap-2 mb-2 text-emerald-700 font-bold text-sm">
+                  <CheckCircle className="w-4 h-4 shrink-0" />
+                  <span>{item.title}</span>
                 </div>
+                <p className="text-xs text-gray-600 leading-relaxed">{item.desc}</p>
               </div>
             ))}
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* 8. Official Gazettes, Circulars & Rulebooks */}
-        <section aria-labelledby="gazettes-heading" className="gov-card p-5">
-          <div className="border-b border-gray-200 pb-3 mb-4 flex items-center justify-between">
-            <div>
-              <h2 id="gazettes-heading" className="text-sm font-bold text-gray-900 uppercase tracking-wide">
-                राजपत्र एवं दिशा-निर्देश • Official Circulars & Standards
-              </h2>
-              <p className="text-xs text-gray-500 mt-0.5">Statutory legal frameworks and technical documentation</p>
+      {/* 6. Visual Section: Information Extraction Demo */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="bg-amber-50/70 border border-amber-200 p-6 sm:p-8 rounded-lg">
+          <div className="mb-6 text-center">
+            <h2 className="text-lg font-bold text-gray-900 uppercase tracking-wide">
+              Automated Information Extraction
+            </h2>
+            <p className="text-sm text-gray-600 mt-1">
+              Translating complex, tabular physical records into structured digital data.
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Example 1: Hindi Document */}
+            <div className="bg-white border border-gray-200 rounded shadow-xs overflow-hidden flex flex-col">
+              <div className="bg-gray-100 px-4 py-2.5 text-xs font-bold text-gray-700 border-b border-gray-200">
+                Sample Regional Record (Hindi)
+              </div>
+              <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
+                <div className="bg-gray-50 border border-gray-200 rounded flex items-center justify-center p-4">
+                  <div className="text-gray-500 font-mono text-xs text-center leading-relaxed">
+                    [Scanned Document Sample]<br/><br/>
+                    खाता संख्या: १५<br/>
+                    खातेदार: राम कुमार<br/>
+                    खसरा: १२३/४<br/>
+                    क्षेत्रफल: ०.५० हेक्ट.
+                  </div>
+                </div>
+                <div className="flex flex-col justify-center space-y-2.5 text-xs">
+                  <div className="flex justify-between border-b border-gray-100 pb-1.5">
+                    <span className="text-gray-500">Khata No.</span>
+                    <span className="font-bold text-gray-900 font-mono">15</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-100 pb-1.5">
+                    <span className="text-gray-500">Owner</span>
+                    <span className="font-bold text-gray-900">Ram Kumar</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-100 pb-1.5">
+                    <span className="text-gray-500">Khasra/Survey</span>
+                    <span className="font-bold text-gray-900 font-mono">123/4</span>
+                  </div>
+                  <div className="flex justify-between pb-1">
+                    <span className="text-gray-500">Area</span>
+                    <span className="font-bold text-gray-900 font-mono">0.50 Hectares</span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <Link href="/help" className="text-xs text-amber-700 hover:underline font-semibold">
-              View All Circulars →
-            </Link>
-          </div>
 
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-xs text-left gov-table">
-              <thead>
-                <tr>
-                  <th>Circular / Reference No.</th>
-                  <th>Date</th>
-                  <th>Issuing Authority</th>
-                  <th>Subject Matter</th>
-                  <th className="text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                <tr>
-                  <td className="font-mono font-bold text-gray-900">DILRMP/2026/CIR-14</td>
-                  <td>15 Feb 2026</td>
-                  <td>Ministry of Rural Development</td>
-                  <td>Integration of drone-based cadastral survey maps with Record of Rights (RoRs)</td>
-                  <td className="text-right">
-                    <span className="text-amber-800 font-semibold cursor-pointer hover:underline inline-flex items-center gap-1">
-                      <Download className="w-3.5 h-3.5" /> PDF (480 KB)
-                    </span>
-                  </td>
-                </tr>
-                <tr>
-                  <td className="font-mono font-bold text-gray-900">REV-UP/2026/MUT-09</td>
-                  <td>02 Jan 2026</td>
-                  <td>Board of Revenue, UP</td>
-                  <td>Standard operating procedure for handling flagged area anomalies in 7/12 & Khatauni</td>
-                  <td className="text-right">
-                    <span className="text-amber-800 font-semibold cursor-pointer hover:underline inline-flex items-center gap-1">
-                      <Download className="w-3.5 h-3.5" /> PDF (320 KB)
-                    </span>
-                  </td>
-                </tr>
-                <tr>
-                  <td className="font-mono font-bold text-gray-900">E-GOV/SEC65B/2025</td>
-                  <td>18 Nov 2025</td>
-                  <td>Law & Justice Department</td>
-                  <td>Admissibility of automated OCR audit trails under Section 65B of Indian Evidence Act</td>
-                  <td className="text-right">
-                    <span className="text-amber-800 font-semibold cursor-pointer hover:underline inline-flex items-center gap-1">
-                      <Download className="w-3.5 h-3.5" /> PDF (610 KB)
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            {/* Example 2: English Document */}
+            <div className="bg-white border border-gray-200 rounded shadow-xs overflow-hidden flex flex-col">
+              <div className="bg-gray-100 px-4 py-2.5 text-xs font-bold text-gray-700 border-b border-gray-200">
+                Sample Cadastral Record (English)
+              </div>
+              <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
+                <div className="bg-gray-50 border border-gray-200 rounded flex items-center justify-center p-4">
+                  <div className="text-gray-500 font-mono text-xs text-center leading-relaxed">
+                    [Scanned Document Sample]<br/><br/>
+                    Survey No: 45A<br/>
+                    Title Holder: S. Patel<br/>
+                    Sub-Division: 2<br/>
+                    Extent: 1.2 Acres
+                  </div>
+                </div>
+                <div className="flex flex-col justify-center space-y-2.5 text-xs">
+                  <div className="flex justify-between border-b border-gray-100 pb-1.5">
+                    <span className="text-gray-500">Survey No.</span>
+                    <span className="font-bold text-gray-900 font-mono">45A</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-100 pb-1.5">
+                    <span className="text-gray-500">Title Holder</span>
+                    <span className="font-bold text-gray-900">S. Patel</span>
+                  </div>
+                  <div className="flex justify-between border-b border-gray-100 pb-1.5">
+                    <span className="text-gray-500">Sub-Division</span>
+                    <span className="font-bold text-gray-900 font-mono">2</span>
+                  </div>
+                  <div className="flex justify-between pb-1">
+                    <span className="text-gray-500">Area (Extent)</span>
+                    <span className="font-bold text-gray-900 font-mono">1.2 Acres</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-        </section>
-      </div>
+        </div>
+      </section>
+
+      {/* 7. Impact & Benefits */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-6">
+          <h2 className="text-lg font-bold text-gray-900 uppercase tracking-wide border-b-2 border-amber-600 inline-block pb-1">
+            Impact & Benefits
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white p-6 border border-gray-200 rounded-lg shadow-xs">
+            <div className="flex items-center gap-2 mb-3">
+              <Building className="w-5 h-5 text-amber-700" />
+              <h3 className="text-base font-bold text-gray-900">For Government Departments</h3>
+            </div>
+            <ul className="space-y-2.5 text-sm text-gray-700">
+              <li>• Drastic reduction in manual data entry backlogs across revenue offices.</li>
+              <li>• Automated detection of spatial overlaps and fraudulent registrations.</li>
+              <li>• Establishment of a centralized, auditable, and secure document archive.</li>
+              <li>• Enhanced capability to monitor revenue operations via dashboard analytics.</li>
+            </ul>
+          </div>
+          <div className="bg-white p-6 border border-gray-200 rounded-lg shadow-xs">
+            <div className="flex items-center gap-2 mb-3">
+              <Users className="w-5 h-5 text-amber-700" />
+              <h3 className="text-base font-bold text-gray-900">For Citizens</h3>
+            </div>
+            <ul className="space-y-2.5 text-sm text-gray-700">
+              <li>• Faster processing of mutation requests and property transfers.</li>
+              <li>• Increased transparency and direct accessibility to verified land records.</li>
+              <li>• Significant reduction in protracted land disputes and litigation.</li>
+              <li>• Assurance of clear ownership through cross-validated digital registries.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

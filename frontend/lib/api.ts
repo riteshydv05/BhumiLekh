@@ -621,3 +621,94 @@ export async function getIntegrationStatus(): Promise<IntegrationStatus> {
   return res.json();
 }
 
+// ---------------------------------------------------------------------------
+// Authentication & User Management API
+// ---------------------------------------------------------------------------
+
+export interface AuthTokenResponse {
+  access_token: string;
+  token_type: string;
+  user_id: string;
+  username: string;
+  role: string;
+  full_name?: string | null;
+}
+
+export interface UserProfile {
+  id: string;
+  username: string;
+  email?: string | null;
+  full_name?: string | null;
+  role: string;
+  is_active: boolean;
+  created_at?: string | null;
+  last_login?: string | null;
+}
+
+export async function loginUser(username: string, password: string): Promise<AuthTokenResponse> {
+  const res = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Login failed" }));
+    throw new Error(err.detail || "Invalid credentials");
+  }
+  return res.json();
+}
+
+export async function listUsers(token?: string): Promise<{ count: number; users: UserProfile[] }> {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE_URL}/auth/users`, {
+    method: "GET",
+    headers,
+    cache: "no-store",
+  });
+
+  if (!res.ok) throw new Error("Failed to load users");
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Admin Document & Record Mutations
+// ---------------------------------------------------------------------------
+
+export async function updateDocumentStatus(
+  docId: string,
+  status: string,
+  errorMessage?: string,
+  token?: string
+): Promise<{ document_id: string; status: string; message: string }> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE_URL}/documents/${docId}/status`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ status, error_message: errorMessage }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to update document status" }));
+    throw new Error(err.detail || "Failed to update status");
+  }
+  return res.json();
+}
+
+export async function deleteDocument(docId: string, token?: string): Promise<{ status: string; document_id: string }> {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE_URL}/documents/${docId}`, {
+    method: "DELETE",
+    headers,
+  });
+
+  if (!res.ok) throw new Error("Failed to delete document");
+  return res.json();
+}
+

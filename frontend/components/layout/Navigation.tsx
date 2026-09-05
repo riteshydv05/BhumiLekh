@@ -15,10 +15,12 @@ import {
   Search,
   BookOpen,
   Bell,
+  Lock,
 } from "lucide-react";
 import { useTranslation } from "@/context/AccessibilityContext";
+import { useAuth } from "@/context/AuthContext";
 
-const NAV_ITEMS = [
+const BASE_NAV_ITEMS = [
   { href: "/", key: "nav.home", defaultLabel: "Home Portal", icon: Home },
   { href: "/dashboard", key: "nav.dashboard", defaultLabel: "System Dashboard", icon: LayoutDashboard },
   { href: "/documents", key: "nav.documents", defaultLabel: "Land Records Repository", icon: FileText },
@@ -37,6 +39,18 @@ export default function Navigation() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { t } = useTranslation();
+  const { user, isOfficer } = useAuth();
+
+  const navItems = [
+    ...BASE_NAV_ITEMS,
+    {
+      href: "/admin",
+      key: "nav.admin",
+      defaultLabel: "Admin Console",
+      icon: Lock,
+      badge: user?.role ? user.role : "RBAC",
+    },
+  ];
 
   return (
     <nav className="bg-gradient-to-r from-amber-700 via-amber-600 to-amber-700 text-white shadow-sm border-b-2 border-amber-800" aria-label="Main Navigation">
@@ -44,7 +58,7 @@ export default function Navigation() {
         <div className="flex items-center justify-between h-11">
           {/* Desktop Navigation Links */}
           <div className="hidden md:flex items-center space-x-1">
-            {NAV_ITEMS.map((item) => {
+            {navItems.map((item) => {
               const Icon = item.icon;
               const isActive =
                 item.href === "/"
@@ -77,14 +91,6 @@ export default function Navigation() {
 
           {/* Right Action Shortcuts (Desktop) */}
           <div className="hidden lg:flex items-center gap-2">
-            <Link
-              href="/#quick-search-section"
-              className="px-2.5 py-1 rounded bg-amber-800/70 hover:bg-amber-800 text-amber-100 hover:text-white text-xs font-semibold flex items-center gap-1 border border-amber-500/40 transition"
-              title="Quick Search by Khasra or ULPIN"
-            >
-              <Search className="w-3.5 h-3.5" />
-              <span>Search Khasra / ULPIN</span>
-            </Link>
 
             <Link
               href="/help"
@@ -118,7 +124,7 @@ export default function Navigation() {
       {/* Mobile Collapsible Drawer */}
       {mobileOpen && (
         <div className="md:hidden bg-amber-800 border-t border-amber-900 px-3 pt-2 pb-3 space-y-1">
-          {NAV_ITEMS.map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             const isActive =
               item.href === "/"
@@ -150,16 +156,7 @@ export default function Navigation() {
             );
           })}
 
-          <div className="pt-2 border-t border-amber-700/60 mt-2 flex flex-col gap-1">
-            <Link
-              href="/#quick-search-section"
-              onClick={() => setMobileOpen(false)}
-              className="px-3 py-2 text-xs font-semibold bg-amber-900/60 text-amber-200 rounded flex items-center gap-2"
-            >
-              <Search className="w-4 h-4" />
-              <span>Search Khasra or ULPIN</span>
-            </Link>
-          </div>
+
         </div>
       )}
     </nav>

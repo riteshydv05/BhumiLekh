@@ -75,7 +75,8 @@ export default function DashboardPage() {
 
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
-      if (!doc.filename.toLowerCase().includes(q) && !doc.id.toLowerCase().includes(q)) {
+      const filename = doc.filename || "";
+      if (!filename.toLowerCase().includes(q) && !doc.id.toLowerCase().includes(q)) {
         return false;
       }
     }

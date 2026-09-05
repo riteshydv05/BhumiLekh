@@ -409,6 +409,58 @@ def delete_field(
 
 
 # ---------------------------------------------------------------------------
+# Update document status (Admin / Officer role)
+# ---------------------------------------------------------------------------
+
+@router.patch("/{document_id}/status")
+def update_document_status(
+    document_id: uuid.UUID,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    """Update document workflow status (e.g. COMPLETED, VERIFICATION_REQUIRED, REJECTED, ARCHIVED)."""
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    new_status = payload.get("status")
+    if not new_status:
+        raise HTTPException(status_code=400, detail="status is required")
+
+    doc.status = new_status
+    if "error_message" in payload:
+        doc.error_message = payload["error_message"]
+    db.commit()
+    db.refresh(doc)
+    return {
+        "document_id": str(doc.id),
+        "status": doc.status,
+        "message": f"Document status updated to {new_status}",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Delete entire document and associated results (Admin only)
+# ---------------------------------------------------------------------------
+
+@router.delete("/{document_id}")
+def delete_document(
+    document_id: uuid.UUID,
+    db: Session = Depends(get_db),
+):
+    """Delete a document and all related extracted fields and validations."""
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Delete results first
+    db.query(DocumentResult).filter(DocumentResult.document_id == document_id).delete()
+    db.delete(doc)
+    db.commit()
+    return {"status": "deleted", "document_id": str(document_id)}
+
+
+# ---------------------------------------------------------------------------
 # Raw OCR pages
 # ---------------------------------------------------------------------------
 

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAccessibility } from "@/context/AccessibilityContext";
+import { useAuth } from "@/context/AuthContext";
 import {
   Eye,
   HelpCircle,
@@ -27,6 +28,7 @@ const JURISDICTIONS = [
 ];
 
 export default function TopUtilityBar() {
+  const { user, logout } = useAuth();
   const {
     highContrast,
     toggleHighContrast,
@@ -116,12 +118,52 @@ export default function TopUtilityBar() {
             </select>
           </div>
 
-          {/* Active Officer Session Pill */}
-          <div className="hidden xl:flex items-center gap-1.5 bg-slate-900 px-2 py-0.5 rounded border border-slate-800 text-slate-300">
-            <UserCheck className="w-3 h-3 text-emerald-400" />
-            <span>Officer: <strong className="text-white">RO-SADAR-4092</strong></span>
-            <span className="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-1 rounded uppercase font-mono">Tehsildar</span>
-          </div>
+          {/* Real Authentication Session Pill / Login Button */}
+          {user ? (
+            <div className="flex items-center gap-2 bg-slate-900 px-2 py-0.5 rounded border border-slate-800 text-slate-300">
+              <UserCheck className="w-3 h-3 text-emerald-400" />
+              <span>
+                <strong className="text-white">{user.username}</strong>
+              </span>
+              <span className={`text-[9px] px-1 rounded uppercase font-mono font-bold border ${
+                user.role === "ADMIN"
+                  ? "bg-purple-950 text-purple-300 border-purple-800"
+                  : user.role === "OFFICER"
+                  ? "bg-blue-950 text-blue-300 border-blue-800"
+                  : "bg-emerald-950 text-emerald-300 border-emerald-800"
+              }`}>
+                {user.role}
+              </span>
+
+              {(user.role === "ADMIN" || user.role === "OFFICER") && (
+                <Link
+                  href="/admin"
+                  className="text-[10px] text-amber-400 hover:text-amber-300 font-bold underline"
+                  title="Open Admin Console"
+                >
+                  Admin Console
+                </Link>
+              )}
+
+              <button
+                type="button"
+                onClick={logout}
+                className="text-[10px] text-rose-400 hover:text-rose-300 font-semibold ml-1"
+                title="Sign out of current account"
+              >
+                Logout
+              </button>
+            </div>
+          ) : (
+            <Link
+              href="/login"
+              className="flex items-center gap-1 bg-amber-700 hover:bg-amber-800 text-white px-2.5 py-0.5 rounded font-bold text-[11px] shadow-2xs transition"
+              title="Sign in with official credentials"
+            >
+              <UserCheck className="w-3 h-3" />
+              <span>Login</span>
+            </Link>
+          )}
 
           {/* Font Scaling Controls */}
           <div

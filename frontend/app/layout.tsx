@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { AccessibilityProvider } from "@/context/AccessibilityContext";
+import { AuthProvider } from "@/context/AuthContext";
 import TopUtilityBar from "@/components/layout/TopUtilityBar";
 import Header from "@/components/layout/Header";
 import Navigation from "@/components/layout/Navigation";
@@ -29,13 +30,15 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen flex flex-col bg-gray-50 text-gray-900 antialiased">
         <AccessibilityProvider>
-          <TopUtilityBar />
-          <Header />
-          <Navigation />
-          <main id="main-content" className="flex-1 flex flex-col">
-            {children}
-          </main>
-          <Footer />
+          <AuthProvider>
+            <TopUtilityBar />
+            <Header />
+            <Navigation />
+            <main id="main-content" className="flex-1 flex flex-col">
+              {children}
+            </main>
+            <Footer />
+          </AuthProvider>
         </AccessibilityProvider>
       </body>
     </html>
