@@ -287,3 +287,337 @@ export async function deleteDocumentField(
 export function getDocumentFileUrl(id: string): string {
   return `${API_BASE_URL}/documents/${id}/file`;
 }
+
+// ---------------------------------------------------------------------------
+// Validation Results
+// ---------------------------------------------------------------------------
+
+export interface FieldValidation {
+  id: string;
+  field_name: string;
+  confidence_score: number | null;
+  confidence_category: string | null;
+  validation_passed: boolean;
+  validation_errors: string[] | null;
+  verification_status: string | null;
+  reference_value: string | null;
+  anomaly_detected: boolean;
+  anomaly_details: string | null;
+  is_duplicate_flag: boolean;
+}
+
+export interface ValidationResponse {
+  document_id: string;
+  overall_confidence: number | null;
+  overall_confidence_category: string | null;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+  uncertain_count: number;
+  flagged_fields: string[];
+  anomalies: string[];
+  requires_human_review: boolean;
+  field_validations: FieldValidation[];
+  count: number;
+}
+
+export async function getDocumentValidation(id: string): Promise<ValidationResponse> {
+  const res = await fetch(`${API_BASE_URL}/documents/${id}/validation`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!res.ok) throw new Error(`Failed to retrieve validation results (${res.status})`);
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Cross-Database Verification
+// ---------------------------------------------------------------------------
+
+export interface FieldVerification {
+  field_name: string;
+  canonical_key: string | null;
+  extracted_value: string | null;
+  reference_value: string | null;
+  status: string;
+  source: string;
+}
+
+export interface VerificationResponse {
+  document_id: string;
+  overall_status: string;
+  match_count: number;
+  mismatch_count: number;
+  not_found_count: number;
+  not_verifiable_count: number;
+  reference_record_id: string | null;
+  field_verifications: FieldVerification[];
+}
+
+export async function getDocumentVerification(id: string): Promise<VerificationResponse> {
+  const res = await fetch(`${API_BASE_URL}/documents/${id}/verification`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!res.ok) throw new Error(`Failed to retrieve verification results (${res.status})`);
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Duplicate Detection
+// ---------------------------------------------------------------------------
+
+export interface DuplicateCandidate {
+  document_id: string;
+  filename: string;
+  match_type: string;
+  matched_fields: string[];
+  similarity_score: number;
+}
+
+export interface DuplicateResponse {
+  document_id: string;
+  file_hash: string;
+  has_file_duplicate: boolean;
+  has_content_duplicate: boolean;
+  duplicate_count: number;
+  duplicates: DuplicateCandidate[];
+}
+
+export async function getDocumentDuplicates(id: string): Promise<DuplicateResponse> {
+  const res = await fetch(`${API_BASE_URL}/documents/${id}/duplicates`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!res.ok) throw new Error(`Failed to retrieve duplicate results (${res.status})`);
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Continuous AI Learning
+// ---------------------------------------------------------------------------
+
+export interface CorrectionCount {
+  total: number;
+  corrections: number;
+  accuracy: number;
+}
+
+export interface FrequentlyCorrectedField {
+  field_name: string;
+  correction_count: number;
+}
+
+export interface LearningVersion {
+  version: number;
+  training_samples_count: number;
+  accuracy_before: number | null;
+  accuracy_after: number | null;
+  improvement_delta: number | null;
+  deployed: boolean;
+  deployment_notes: string | null;
+  patterns_summary?: {
+    label_mappings: number;
+    ocr_corrections: number;
+    confidence_adjustments: number;
+    doctype_fields: number;
+  };
+  created_at: string | null;
+}
+
+export interface LearningStatsResponse {
+  total_training_samples: number;
+  unused_samples: number;
+  retrain_threshold: number;
+  ready_to_learn: boolean;
+  correction_type_breakdown: Record<string, number>;
+  frequently_corrected_fields: FrequentlyCorrectedField[];
+  document_type_distribution: Record<string, number>;
+  active_version: LearningVersion | null;
+  version_history: LearningVersion[];
+  patterns_summary: {
+    label_mappings_count: number;
+    ocr_corrections_count: number;
+    confidence_adjustments_count: number;
+    doctype_patterns_count: number;
+  };
+  field_accuracy_rates: Record<string, number>;
+}
+
+export interface LearningCycleResult {
+  status: string;
+  version?: number;
+  training_samples?: number;
+  test_samples?: number;
+  accuracy_before?: number;
+  accuracy_after?: number;
+  improvement_delta?: number;
+  reason?: string;
+  error?: string;
+  patterns_learned?: {
+    label_mappings: number;
+    ocr_corrections: number;
+    confidence_adjustments: number;
+    doctype_fields: number;
+  };
+}
+
+export interface LearningHistoryResponse {
+  total_versions: number;
+  versions: LearningVersion[];
+}
+
+export async function getLearningStats(): Promise<LearningStatsResponse> {
+  const res = await fetch(`${API_BASE_URL}/documents/learning/stats`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!res.ok) throw new Error(`Failed to retrieve learning stats (${res.status})`);
+  return res.json();
+}
+
+export async function triggerLearningCycle(): Promise<LearningCycleResult> {
+  const res = await fetch(`${API_BASE_URL}/documents/learning/trigger`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!res.ok) throw new Error(`Failed to trigger learning cycle (${res.status})`);
+  return res.json();
+}
+
+export async function getLearningHistory(): Promise<LearningHistoryResponse> {
+  const res = await fetch(`${API_BASE_URL}/documents/learning/history`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!res.ok) throw new Error(`Failed to retrieve learning history (${res.status})`);
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// GIS / LRMS Integration
+// ---------------------------------------------------------------------------
+
+export interface GeoJSONGeometry {
+  type: string;
+  coordinates: number[][][] | number[][] | number[];
+}
+
+export interface ParcelProperties {
+  id: string;
+  survey_number: string | null;
+  khasra_number: string | null;
+  khata_number: string | null;
+  plot_number: string | null;
+  owner_name: string | null;
+  father_name: string | null;
+  village: string | null;
+  tehsil: string | null;
+  district: string | null;
+  state: string | null;
+  area: string | null;
+  land_classification: string | null;
+  registration_number: string | null;
+  mutation_number: string | null;
+  lrms_id: string | null;
+  dilrmp_id: string | null;
+  source_database: string | null;
+  centroid_lat: number | null;
+  centroid_lng: number | null;
+  matched_from_document?: string;
+  matched_identifiers?: Record<string, string>;
+}
+
+export interface GeoJSONFeature {
+  type: "Feature";
+  id: string;
+  geometry: GeoJSONGeometry | null;
+  properties: ParcelProperties;
+}
+
+export interface GeoJSONFeatureCollection {
+  type: "FeatureCollection";
+  features: GeoJSONFeature[];
+  metadata?: {
+    total_parcels: number;
+    source: string;
+    crs: string;
+    note: string;
+  };
+}
+
+export interface LRMSLookupResponse {
+  status: string;
+  source_system: string;
+  match_score: number;
+  matched_fields: string[];
+  record?: Record<string, unknown>;
+  error?: string;
+}
+
+export interface DocumentParcelResponse {
+  status: string;
+  document_id: string;
+  parcel?: GeoJSONFeature;
+  message?: string;
+}
+
+export interface IntegrationStatus {
+  active_adapter: string;
+  available_adapters: { name: string; status: string; description: string }[];
+  postgis_enabled: boolean;
+  data_source_label: string;
+}
+
+export async function getGISParcels(village?: string, district?: string): Promise<GeoJSONFeatureCollection> {
+  const params = new URLSearchParams();
+  if (village) params.set("village", village);
+  if (district) params.set("district", district);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+
+  const res = await fetch(`${API_BASE_URL}/documents/integration/gis/parcels${qs}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!res.ok) throw new Error(`Failed to get parcels (${res.status})`);
+  return res.json();
+}
+
+export async function getDocumentParcel(docId: string): Promise<DocumentParcelResponse> {
+  const res = await fetch(`${API_BASE_URL}/documents/integration/documents/${docId}/parcel`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!res.ok) throw new Error(`Failed to get document parcel (${res.status})`);
+  return res.json();
+}
+
+export async function lookupLRMS(params: Record<string, string>): Promise<LRMSLookupResponse> {
+  const qs = new URLSearchParams(params).toString();
+  const res = await fetch(`${API_BASE_URL}/documents/integration/lrms/lookup?${qs}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!res.ok) throw new Error(`LRMS lookup failed (${res.status})`);
+  return res.json();
+}
+
+export async function getIntegrationStatus(): Promise<IntegrationStatus> {
+  const res = await fetch(`${API_BASE_URL}/documents/integration/status`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!res.ok) throw new Error(`Integration status failed (${res.status})`);
+  return res.json();
+}
+

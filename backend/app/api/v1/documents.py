@@ -321,7 +321,11 @@ def update_field(
     body: dict = Body(...),
     db: Session = Depends(get_db),
 ):
-    """Edit an existing field (value, name, etc.)."""
+    """Edit an existing field (value, name, etc.).
+
+    Automatically records the correction as training data for
+    the continuous AI learning system.
+    """
     field = (
         db.query(DocumentResult)
         .filter(
@@ -332,6 +336,10 @@ def update_field(
     )
     if not field:
         raise HTTPException(status_code=404, detail="Field not found")
+
+    # Capture original values BEFORE the edit for learning
+    original_value = field.field_value
+    original_name = field.field_name
 
     # Updatable attributes
     for attr in (
@@ -344,6 +352,35 @@ def update_field(
     field.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(field)
+
+    # Record the correction as training data for continuous learning
+    try:
+        from app.services.learning_service import record_correction, run_learning_cycle
+
+        # Get document metadata for learning context
+        doc = db.query(Document).filter(Document.id == document_id).first()
+
+        learning_result = record_correction(
+            document_id=str(document_id),
+            field_result_id=str(field_id),
+            field_name=original_name,
+            original_value=original_value,
+            corrected_value=body.get("field_value", original_value),
+            correction_type="value_correction",
+            canonical_key=field.canonical_key,
+            document_type=doc.document_type if doc else None,
+            language=doc.detected_language if doc else None,
+            ocr_confidence=field.confidence,
+            extraction_method=field.extraction_method,
+        )
+
+        # Auto-trigger learning cycle if threshold reached
+        if learning_result.get("should_trigger_learning"):
+            run_learning_cycle()
+    except Exception as exc:
+        # Learning is non-critical — don't fail the edit
+        import logging
+        logging.getLogger(__name__).warning("Learning recording failed (non-critical): %s", exc)
 
     return _serialize_field(field)
 
@@ -520,3 +557,180 @@ def translate_document(
         "fields_translated": len(updated_results),
         "fields": [_serialize_field(r) for r in updated_results],
     }
+
+
+# ---------------------------------------------------------------------------
+# Validation Results (Confidence + Validation + Anomaly)
+# ---------------------------------------------------------------------------
+
+@router.get("/{document_id}/validation")
+def get_validation_results(
+    document_id: uuid.UUID,
+    db: Session = Depends(get_db),
+):
+    """Return validation results including confidence scoring, field validation, and anomaly info."""
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    from app.models.validation_result import ValidationResult
+
+    validation_rows = (
+        db.query(ValidationResult)
+        .filter(ValidationResult.document_id == document_id)
+        .all()
+    )
+
+    # Get confidence/validation from processing_metadata as fallback
+    meta = doc.processing_metadata or {}
+    confidence_stage = meta.get("stages", {}).get("confidence", {})
+    validation_stage = meta.get("stages", {}).get("validation", {})
+
+    field_validations = []
+    for vr in validation_rows:
+        field_validations.append({
+            "id": str(vr.id),
+            "field_name": vr.field_name,
+            "confidence_score": vr.confidence_score,
+            "confidence_category": vr.confidence_category,
+            "validation_passed": vr.validation_passed,
+            "validation_errors": vr.validation_errors,
+            "verification_status": vr.verification_status,
+            "reference_value": vr.reference_value,
+            "anomaly_detected": vr.anomaly_detected,
+            "anomaly_details": vr.anomaly_details,
+            "is_duplicate_flag": vr.is_duplicate_flag,
+        })
+
+    return {
+        "document_id": str(document_id),
+        "overall_confidence": confidence_stage.get("overall_confidence"),
+        "overall_confidence_category": confidence_stage.get("overall_category"),
+        "high_count": confidence_stage.get("high_count", 0),
+        "medium_count": confidence_stage.get("medium_count", 0),
+        "low_count": confidence_stage.get("low_count", 0),
+        "uncertain_count": confidence_stage.get("uncertain_count", 0),
+        "flagged_fields": confidence_stage.get("flagged_fields", []),
+        "anomalies": validation_stage.get("anomalies", []),
+        "requires_human_review": validation_stage.get("requires_human_review", False),
+        "field_validations": field_validations,
+        "count": len(field_validations),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Cross-Database Verification
+# ---------------------------------------------------------------------------
+
+@router.get("/{document_id}/verification")
+def get_verification_results(
+    document_id: uuid.UUID,
+    db: Session = Depends(get_db),
+):
+    """Return cross-database verification results for a document."""
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    meta = doc.processing_metadata or {}
+    verification_stage = meta.get("stages", {}).get("verification", {})
+
+    return {
+        "document_id": str(document_id),
+        "overall_status": verification_stage.get("overall_status", "UNVERIFIED"),
+        "match_count": verification_stage.get("match_count", 0),
+        "mismatch_count": verification_stage.get("mismatch_count", 0),
+        "not_found_count": verification_stage.get("not_found_count", 0),
+        "not_verifiable_count": verification_stage.get("not_verifiable_count", 0),
+        "reference_record_id": verification_stage.get("reference_record_id"),
+        "field_verifications": verification_stage.get("field_verifications", []),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Duplicate Detection
+# ---------------------------------------------------------------------------
+
+@router.get("/{document_id}/duplicates")
+def get_duplicate_results(
+    document_id: uuid.UUID,
+    db: Session = Depends(get_db),
+):
+    """Return duplicate detection results for a document."""
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    meta = doc.processing_metadata or {}
+    dup_stage = meta.get("stages", {}).get("duplicate_detection", {})
+
+    return {
+        "document_id": str(document_id),
+        "file_hash": dup_stage.get("file_hash", ""),
+        "has_file_duplicate": dup_stage.get("has_file_duplicate", False),
+        "has_content_duplicate": dup_stage.get("has_content_duplicate", False),
+        "duplicate_count": dup_stage.get("duplicate_count", 0),
+        "duplicates": dup_stage.get("duplicates", []),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Continuous AI Learning
+# ---------------------------------------------------------------------------
+
+@router.get("/learning/stats")
+def get_learning_stats():
+    """Return comprehensive learning statistics for the dashboard."""
+    from app.services.learning_service import get_learning_stats as _get_stats
+    return _get_stats()
+
+
+@router.post("/learning/trigger")
+def trigger_learning_cycle():
+    """Manually trigger a learning cycle.
+
+    The system also auto-triggers after a configurable number of corrections,
+    but this endpoint allows manual triggering.
+    """
+    from app.services.learning_service import run_learning_cycle
+    result = run_learning_cycle()
+    return result
+
+
+@router.get("/learning/history")
+def get_learning_history(
+    db: Session = Depends(get_db),
+):
+    """Return version history with accuracy deltas."""
+    from app.models.learning_model import LearningSnapshot
+
+    snapshots = (
+        db.query(LearningSnapshot)
+        .order_by(LearningSnapshot.version.desc())
+        .limit(20)
+        .all()
+    )
+
+    return {
+        "total_versions": len(snapshots),
+        "versions": [
+            {
+                "version": s.version,
+                "training_samples_count": s.training_samples_count,
+                "accuracy_before": s.accuracy_before,
+                "accuracy_after": s.accuracy_after,
+                "improvement_delta": s.improvement_delta,
+                "deployed": s.deployed,
+                "deployment_notes": s.deployment_notes,
+                "patterns_summary": {
+                    "label_mappings": len((s.patterns_json or {}).get("label_mappings", {})),
+                    "ocr_corrections": len((s.patterns_json or {}).get("ocr_corrections", {})),
+                    "confidence_adjustments": len((s.patterns_json or {}).get("confidence_adjustments", {})),
+                    "doctype_fields": len((s.patterns_json or {}).get("doctype_fields", {})),
+                } if s.patterns_json else {},
+                "created_at": s.created_at.isoformat() if s.created_at else None,
+            }
+            for s in snapshots
+        ],
+    }
+

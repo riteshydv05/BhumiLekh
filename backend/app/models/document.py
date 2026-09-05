@@ -38,6 +38,13 @@ class Document(Base):
         nullable=False,
     )
 
+    file_hash: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        index=True,
+        comment="SHA-256 hash for duplicate file detection",
+    )
+
     status: Mapped[str] = mapped_column(
         String(50),
         nullable=False,

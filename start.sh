@@ -148,7 +148,11 @@ fi
 (
     cd "${PROJECT_ROOT}/frontend"
 
-    # Clear stale build cache to prevent "Cannot find module './NNN.js'" errors
+    # Ensure port 3000 is completely free
+    lsof -ti :3000 | xargs kill -9 2>/dev/null || true
+    sleep 1
+
+    # Clear stale build cache to prevent "clientModules" or webpack manifest errors
     rm -rf .next
 
     nohup npm run dev \

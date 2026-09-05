@@ -466,11 +466,24 @@ def _lookup_canonical(label: str, language: str = "en") -> str | None:
     """Find the canonical key for a discovered label, if one exists.
 
     Returns None for labels without a known canonical mapping.
-    Uses exact phrase matching first, then fuzzy substring matching.
+    Priority order:
+      1. Learned label mappings (from human corrections)
+      2. Hardcoded exact phrase match
+      3. Hardcoded substring match
     """
     label_lower = label.lower().strip()
 
-    # Exact phrase match first (highest priority)
+    # Check learned mappings first (highest priority — trained from corrections)
+    try:
+        from app.services.learning_service import get_learned_canonical_key
+        learned = get_learned_canonical_key(label)
+        if learned:
+            logger.debug("Learned canonical mapping: %s → %s", label, learned)
+            return learned
+    except Exception:
+        pass  # Learning service not available — fall through
+
+    # Exact phrase match (hardcoded)
     for keywords, canonical_key in _CANONICAL_MAP:
         for kw in keywords:
             if kw == label_lower:
@@ -556,6 +569,7 @@ def extract_dynamic_fields(
     4. Assign canonical keys
     5. Assign data types
     6. Calculate confidence
+    7. Apply learned OCR corrections and confidence adjustments
 
     Returns DynamicExtractionResult with all discovered fields.
     """
@@ -576,6 +590,9 @@ def extract_dynamic_fields(
             seen.add(tf.field_name.lower())
             all_fields.append(tf)
 
+    # 5. Apply learned patterns from continuous learning
+    all_fields = _apply_learned_improvements(all_fields)
+
     logger.info(
         "Dynamic extraction complete: type=%s fields=%d (kv=%d, table=%d)",
         doc_type, len(all_fields), len(kv_fields), len(table_fields),
@@ -587,3 +604,42 @@ def extract_dynamic_fields(
         document_type_confidence=doc_type_conf,
         language=language,
     )
+
+
+def _apply_learned_improvements(fields: list[DynamicField]) -> list[DynamicField]:
+    """Apply learned OCR corrections and confidence adjustments from the learning system."""
+    try:
+        from app.services.learning_service import (
+            apply_learned_ocr_corrections,
+            apply_learned_confidence,
+        )
+
+        improved_count = 0
+        for field in fields:
+            # Apply learned OCR corrections
+            if field.field_value:
+                corrected = apply_learned_ocr_corrections(
+                    field.field_name, field.field_value
+                )
+                if corrected and corrected != field.field_value:
+                    logger.info(
+                        "[LEARNING] OCR correction applied: %s = '%s' → '%s'",
+                        field.field_name, field.field_value[:50], corrected[:50],
+                    )
+                    field.field_value = corrected
+                    field.extraction_method = "key_value_extraction+learned_correction"
+                    improved_count += 1
+
+            # Apply learned confidence adjustments
+            original_conf = field.confidence
+            adjusted_conf = apply_learned_confidence(field.field_name, original_conf)
+            if adjusted_conf != original_conf:
+                field.confidence = adjusted_conf
+
+        if improved_count > 0:
+            logger.info("[LEARNING] Applied %d learned corrections", improved_count)
+
+    except Exception as exc:
+        logger.debug("[LEARNING] Could not apply learned improvements: %s", exc)
+
+    return fields

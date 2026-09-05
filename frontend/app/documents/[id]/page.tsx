@@ -10,8 +10,19 @@ import {
   getDocumentFileUrl,
   reprocessDocument,
   translateDocument,
+  getDocumentValidation,
+  getDocumentVerification,
+  getDocumentDuplicates,
   DocumentItem,
   DocumentResultItem,
+  ValidationResponse,
+  VerificationResponse,
+  DuplicateResponse,
+  LearningStatsResponse,
+  getLearningStats,
+  triggerLearningCycle,
+  getDocumentParcel,
+  DocumentParcelResponse,
 } from "@/lib/api";
 import Breadcrumb from "@/components/layout/Breadcrumb";
 import DocumentStatusBadge from "@/components/documents/DocumentStatusBadge";
@@ -33,6 +44,16 @@ import {
   RotateCw,
   Globe,
   Sparkles,
+  Database,
+  Copy,
+  Gauge,
+  CheckCircle2,
+  XCircle,
+  HelpCircle,
+  Brain,
+  TrendingUp,
+  Zap,
+  MapPinned,
 } from "lucide-react";
 
 export default function DocumentDetailPage() {
@@ -43,6 +64,13 @@ export default function DocumentDetailPage() {
   const [results, setResults] = useState<DocumentResultItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [validationData, setValidationData] = useState<ValidationResponse | null>(null);
+  const [verificationData, setVerificationData] = useState<VerificationResponse | null>(null);
+  const [duplicateData, setDuplicateData] = useState<DuplicateResponse | null>(null);
+  const [learningData, setLearningData] = useState<LearningStatsResponse | null>(null);
+  const [isLearning, setIsLearning] = useState<boolean>(false);
+  const [learningResult, setLearningResult] = useState<string | null>(null);
+  const [documentParcel, setDocumentParcel] = useState<DocumentParcelResponse | null>(null);
 
   const [selectedOcrLang, setSelectedOcrLang] = useState<string>("auto");
   const [selectedTargetLang, setSelectedTargetLang] = useState<string>("en");
@@ -66,6 +94,23 @@ export default function DocumentDetailPage() {
         setResults(resData.results || (resData as any).fields || []);
         if (docData.detected_language && docData.detected_language !== "unknown") {
           setSelectedOcrLang(docData.detected_language);
+        }
+        // Fetch validation, verification, and duplicate data (non-blocking)
+        if (docData.status === "COMPLETED" || docData.status === "VERIFICATION_REQUIRED") {
+          Promise.all([
+            getDocumentValidation(docId).catch(() => null),
+            getDocumentVerification(docId).catch(() => null),
+            getDocumentDuplicates(docId).catch(() => null),
+            getLearningStats().catch(() => null),
+            getDocumentParcel(docId).catch(() => null),
+          ]).then(([valData, verData, dupData, learnData, parcelData]) => {
+            if (!isMounted) return;
+            if (valData) setValidationData(valData);
+            if (verData) setVerificationData(verData);
+            if (dupData) setDuplicateData(dupData);
+            if (learnData) setLearningData(learnData);
+            if (parcelData) setDocumentParcel(parcelData);
+          });
         }
         setError(null);
       } catch (err: any) {
@@ -536,9 +581,401 @@ export default function DocumentDetailPage() {
                 </p>
               )}
             </div>
+
+            {/* Confidence Scoring Dashboard */}
+            {validationData && (
+              <div className="gov-card p-4 border-l-4 border-l-indigo-600">
+                <h3 className="text-xs font-bold text-gray-900 uppercase border-b border-gray-100 pb-2 mb-3 flex items-center gap-1.5">
+                  <Gauge className="w-4 h-4 text-indigo-700" />
+                  <span>Confidence Scoring Dashboard</span>
+                  {validationData.overall_confidence_category && (
+                    <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded border ${
+                      validationData.overall_confidence_category === "HIGH"
+                        ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                        : validationData.overall_confidence_category === "MEDIUM"
+                        ? "bg-amber-50 text-amber-800 border-amber-300"
+                        : validationData.overall_confidence_category === "LOW"
+                        ? "bg-orange-50 text-orange-800 border-orange-300"
+                        : "bg-rose-50 text-rose-800 border-rose-300"
+                    }`}>
+                      Overall: {validationData.overall_confidence_category}
+                      {validationData.overall_confidence != null && ` (${(validationData.overall_confidence * 100).toFixed(0)}%)`}
+                    </span>
+                  )}
+                </h3>
+
+                <div className="grid grid-cols-4 gap-2 mb-3">
+                  <div className="text-center p-2 bg-emerald-50 rounded border border-emerald-200">
+                    <p className="text-lg font-bold text-emerald-700">{validationData.high_count}</p>
+                    <p className="text-[9px] font-bold text-emerald-600 uppercase">High ≥85%</p>
+                  </div>
+                  <div className="text-center p-2 bg-amber-50 rounded border border-amber-200">
+                    <p className="text-lg font-bold text-amber-700">{validationData.medium_count}</p>
+                    <p className="text-[9px] font-bold text-amber-600 uppercase">Medium 60-84%</p>
+                  </div>
+                  <div className="text-center p-2 bg-orange-50 rounded border border-orange-200">
+                    <p className="text-lg font-bold text-orange-700">{validationData.low_count}</p>
+                    <p className="text-[9px] font-bold text-orange-600 uppercase">Low 30-59%</p>
+                  </div>
+                  <div className="text-center p-2 bg-rose-50 rounded border border-rose-200">
+                    <p className="text-lg font-bold text-rose-700">{validationData.uncertain_count}</p>
+                    <p className="text-[9px] font-bold text-rose-600 uppercase">Uncertain &lt;30%</p>
+                  </div>
+                </div>
+
+                {validationData.flagged_fields.length > 0 && (
+                  <div className="p-2.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-900">
+                    <p className="font-bold flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      {validationData.flagged_fields.length} field{validationData.flagged_fields.length !== 1 ? "s" : ""} flagged for review
+                    </p>
+                    <p className="text-[10px] mt-1 text-amber-700">
+                      {validationData.flagged_fields.join(", ")}
+                    </p>
+                  </div>
+                )}
+
+                {validationData.requires_human_review && (
+                  <p className="mt-2 text-[11px] text-rose-700 bg-rose-50 border border-rose-200 p-2 rounded flex items-center gap-1.5 font-medium">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    <span>Human review required due to low confidence or validation issues.</span>
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Cross-Database Verification */}
+            {verificationData && (
+              <div className="gov-card p-4 border-l-4 border-l-blue-600">
+                <h3 className="text-xs font-bold text-gray-900 uppercase border-b border-gray-100 pb-2 mb-3 flex items-center gap-1.5">
+                  <Database className="w-4 h-4 text-blue-700" />
+                  <span>Cross-Database Verification</span>
+                  {documentParcel && documentParcel.status === "MATCHED" && (
+                    <a
+                      href={`/map?parcel=${documentParcel.parcel?.id}`}
+                      className="ml-2 text-[9px] px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded font-semibold hover:bg-emerald-200 flex items-center gap-1 transition"
+                    >
+                      <MapPinned className="w-3 h-3" />
+                      View on Map
+                    </a>
+                  )}
+                  <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded border ${
+                    verificationData.overall_status === "VERIFIED"
+                      ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                      : verificationData.overall_status === "PARTIALLY_VERIFIED"
+                      ? "bg-blue-50 text-blue-800 border-blue-300"
+                      : verificationData.overall_status === "MISMATCH_DETECTED"
+                      ? "bg-rose-50 text-rose-800 border-rose-300"
+                      : verificationData.overall_status === "NOT_FOUND"
+                      ? "bg-gray-100 text-gray-600 border-gray-300"
+                      : "bg-gray-50 text-gray-500 border-gray-200"
+                  }`}>
+                    {verificationData.overall_status.replace(/_/g, " ")}
+                  </span>
+                </h3>
+
+                <div className="grid grid-cols-4 gap-2 mb-3 text-center">
+                  <div className="p-1.5 bg-emerald-50 rounded border border-emerald-200">
+                    <p className="text-sm font-bold text-emerald-700">{verificationData.match_count}</p>
+                    <p className="text-[8px] font-bold text-emerald-600 uppercase">Match</p>
+                  </div>
+                  <div className="p-1.5 bg-rose-50 rounded border border-rose-200">
+                    <p className="text-sm font-bold text-rose-700">{verificationData.mismatch_count}</p>
+                    <p className="text-[8px] font-bold text-rose-600 uppercase">Mismatch</p>
+                  </div>
+                  <div className="p-1.5 bg-gray-50 rounded border border-gray-200">
+                    <p className="text-sm font-bold text-gray-600">{verificationData.not_found_count}</p>
+                    <p className="text-[8px] font-bold text-gray-500 uppercase">Not Found</p>
+                  </div>
+                  <div className="p-1.5 bg-gray-50 rounded border border-gray-200">
+                    <p className="text-sm font-bold text-gray-400">{verificationData.not_verifiable_count}</p>
+                    <p className="text-[8px] font-bold text-gray-400 uppercase">N/A</p>
+                  </div>
+                </div>
+
+                {verificationData.field_verifications.length > 0 && (
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {verificationData.field_verifications
+                      .filter((fv) => fv.status !== "NOT_VERIFIABLE")
+                      .map((fv, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-[11px] p-1.5 rounded bg-gray-50/80 border border-gray-100">
+                        <span className="text-gray-700 font-medium truncate max-w-[140px]" title={fv.field_name}>
+                          {fv.canonical_key || fv.field_name}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {fv.status === "MATCH" && (
+                            <span className="flex items-center gap-0.5 text-emerald-700">
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span className="text-[9px] font-bold">MATCH</span>
+                            </span>
+                          )}
+                          {fv.status === "MISMATCH" && (
+                            <span className="flex items-center gap-0.5 text-rose-700" title={`Reference: ${fv.reference_value}`}>
+                              <XCircle className="w-3 h-3" />
+                              <span className="text-[9px] font-bold">MISMATCH</span>
+                            </span>
+                          )}
+                          {fv.status === "NOT_FOUND" && (
+                            <span className="flex items-center gap-0.5 text-gray-500">
+                              <HelpCircle className="w-3 h-3" />
+                              <span className="text-[9px]">NOT FOUND</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {verificationData.reference_record_id && (
+                  <p className="mt-2 text-[10px] text-gray-400 font-mono">
+                    Reference ID: {verificationData.reference_record_id}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Duplicate Detection */}
+            {duplicateData && (duplicateData.has_file_duplicate || duplicateData.has_content_duplicate) && (
+              <div className="gov-card p-4 border-l-4 border-l-rose-600">
+                <h3 className="text-xs font-bold text-gray-900 uppercase border-b border-gray-100 pb-2 mb-3 flex items-center gap-1.5">
+                  <Copy className="w-4 h-4 text-rose-700" />
+                  <span>Duplicate Detection Warning</span>
+                  <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded bg-rose-50 text-rose-800 border border-rose-300">
+                    {duplicateData.duplicate_count} duplicate{duplicateData.duplicate_count !== 1 ? "s" : ""} found
+                  </span>
+                </h3>
+
+                <div className="space-y-2">
+                  {duplicateData.duplicates.map((dup, idx) => (
+                    <div key={idx} className="p-2.5 bg-rose-50 border border-rose-200 rounded text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-rose-900 truncate max-w-[250px]">{dup.filename}</span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                          dup.match_type === "file_hash"
+                            ? "bg-rose-700 text-white"
+                            : "bg-amber-600 text-white"
+                        }`}>
+                          {dup.match_type === "file_hash" ? "IDENTICAL FILE" : "CONTENT MATCH"}
+                        </span>
+                      </div>
+                      {dup.matched_fields.length > 0 && (
+                        <p className="text-[10px] text-rose-700 mt-1">
+                          Matched: {dup.matched_fields.join(", ")}
+                          {dup.similarity_score < 1 && ` (${(dup.similarity_score * 100).toFixed(0)}% similarity)`}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {duplicateData.file_hash && (
+                  <p className="mt-2 text-[10px] text-gray-400 font-mono">
+                    SHA-256: {duplicateData.file_hash.substring(0, 16)}...
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* No duplicates - clean message */}
+            {duplicateData && !duplicateData.has_file_duplicate && !duplicateData.has_content_duplicate && (
+              <div className="text-[11px] text-emerald-700 bg-emerald-50/50 border border-emerald-100 p-2 rounded flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>No duplicate documents detected. File hash: <span className="font-mono text-[9px]">{duplicateData.file_hash?.substring(0, 16)}...</span></span>
+              </div>
+            )}
+
+            {/* AI Learning Insights Panel */}
+            {learningData && (
+              <div className="gov-card p-4 border-l-4 border-l-violet-600">
+                <h3 className="text-xs font-bold text-violet-900 flex items-center gap-1.5 mb-3">
+                  <Brain className="w-3.5 h-3.5" />
+                  Continuous AI Learning
+                </h3>
+
+                {/* Active Model Version */}
+                <div className="bg-violet-50/70 border border-violet-100 rounded p-2.5 mb-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-semibold text-violet-800">Active Model</span>
+                    {learningData.active_version ? (
+                      <span className="text-[9px] px-1.5 py-0.5 bg-violet-200 text-violet-800 rounded font-mono">
+                        v{learningData.active_version.version}
+                      </span>
+                    ) : (
+                      <span className="text-[9px] px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded">
+                        No model trained
+                      </span>
+                    )}
+                  </div>
+                  {learningData.active_version && (
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div className="text-[10px]">
+                        <span className="text-gray-500">Accuracy: </span>
+                        <span className="font-semibold text-violet-700">
+                          {learningData.active_version.accuracy_after != null
+                            ? `${(learningData.active_version.accuracy_after * 100).toFixed(1)}%`
+                            : 'N/A'}
+                        </span>
+                      </div>
+                      <div className="text-[10px]">
+                        <span className="text-gray-500">Improvement: </span>
+                        <span className={`font-semibold ${
+                          (learningData.active_version.improvement_delta || 0) > 0
+                            ? 'text-emerald-600'
+                            : 'text-gray-500'
+                        }`}>
+                          {learningData.active_version.improvement_delta != null
+                            ? `${(learningData.active_version.improvement_delta > 0 ? '+' : '')}${(learningData.active_version.improvement_delta * 100).toFixed(1)}%`
+                            : 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Training Dataset Stats */}
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div className="bg-white border rounded p-2 text-center">
+                    <div className="text-sm font-bold text-violet-700">{learningData.total_training_samples}</div>
+                    <div className="text-[9px] text-gray-500">Total Samples</div>
+                  </div>
+                  <div className="bg-white border rounded p-2 text-center">
+                    <div className="text-sm font-bold text-amber-600">{learningData.unused_samples}</div>
+                    <div className="text-[9px] text-gray-500">Unused</div>
+                  </div>
+                  <div className="bg-white border rounded p-2 text-center">
+                    <div className="text-sm font-bold text-blue-600">
+                      {learningData.correction_type_breakdown?.value_correction || 0}
+                    </div>
+                    <div className="text-[9px] text-gray-500">Corrections</div>
+                  </div>
+                </div>
+
+                {/* Learned Patterns Summary */}
+                {learningData.patterns_summary && (
+                  <div className="mb-3">
+                    <div className="text-[10px] font-semibold text-gray-700 mb-1">Learned Patterns</div>
+                    <div className="grid grid-cols-2 gap-1">
+                      <div className="text-[10px] flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-violet-500" />
+                        <span className="text-gray-600">{learningData.patterns_summary.label_mappings_count} label mappings</span>
+                      </div>
+                      <div className="text-[10px] flex items-center gap-1">
+                        <Zap className="w-3 h-3 text-amber-500" />
+                        <span className="text-gray-600">{learningData.patterns_summary.ocr_corrections_count} OCR corrections</span>
+                      </div>
+                      <div className="text-[10px] flex items-center gap-1">
+                        <TrendingUp className="w-3 h-3 text-blue-500" />
+                        <span className="text-gray-600">{learningData.patterns_summary.confidence_adjustments_count} confidence adjustments</span>
+                      </div>
+                      <div className="text-[10px] flex items-center gap-1">
+                        <Database className="w-3 h-3 text-emerald-500" />
+                        <span className="text-gray-600">{learningData.patterns_summary.doctype_patterns_count} doc-type patterns</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Frequently Corrected Fields */}
+                {learningData.frequently_corrected_fields && learningData.frequently_corrected_fields.length > 0 && (
+                  <div className="mb-3">
+                    <div className="text-[10px] font-semibold text-gray-700 mb-1">Frequently Corrected Fields</div>
+                    <div className="space-y-0.5">
+                      {learningData.frequently_corrected_fields.slice(0, 5).map((f, idx) => (
+                        <div key={idx} className="flex items-center justify-between text-[10px]">
+                          <span className="text-gray-600 truncate">{f.field_name}</span>
+                          <span className="text-red-600 font-semibold">{f.correction_count}x corrected</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Learning Ready Status */}
+                <div className={`text-[10px] p-2 rounded flex items-center justify-between ${
+                  learningData.ready_to_learn
+                    ? 'bg-amber-50 border border-amber-200 text-amber-800'
+                    : 'bg-gray-50 border border-gray-200 text-gray-600'
+                }`}>
+                  <span>
+                    {learningData.ready_to_learn
+                      ? `${learningData.unused_samples} new samples ready (threshold: ${learningData.retrain_threshold})`
+                      : `${learningData.unused_samples}/${learningData.retrain_threshold} samples until next learning`}
+                  </span>
+                  <button
+                    onClick={async () => {
+                      setIsLearning(true);
+                      setLearningResult(null);
+                      try {
+                        const result = await triggerLearningCycle();
+                        setLearningResult(
+                          result.status === 'deployed'
+                            ? `v${result.version} deployed! Accuracy: ${((result.accuracy_after || 0) * 100).toFixed(1)}% (+${((result.improvement_delta || 0) * 100).toFixed(1)}%)`
+                            : result.status === 'skipped'
+                            ? result.reason || 'Not enough data'
+                            : result.status === 'rejected'
+                            ? `Rejected: accuracy would decrease`
+                            : `Error: ${result.error || 'Unknown'}`
+                        );
+                        const stats = await getLearningStats().catch(() => null);
+                        if (stats) setLearningData(stats);
+                      } catch (e: any) {
+                        setLearningResult(`Error: ${e.message}`);
+                      } finally {
+                        setIsLearning(false);
+                      }
+                    }}
+                    disabled={isLearning}
+                    className="px-2 py-1 bg-violet-600 text-white rounded text-[9px] font-semibold hover:bg-violet-700 disabled:opacity-50 flex items-center gap-1"
+                  >
+                    <Brain className="w-3 h-3" />
+                    {isLearning ? 'Learning...' : 'Train AI'}
+                  </button>
+                </div>
+
+                {/* Learning Result */}
+                {learningResult && (
+                  <div className={`mt-2 text-[10px] p-1.5 rounded ${
+                    learningResult.startsWith('v') || learningResult.startsWith('V')
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : 'bg-amber-50 text-amber-700 border border-amber-200'
+                  }`}>
+                    {learningResult}
+                  </div>
+                )}
+
+                {/* Version History (last 3) */}
+                {learningData.version_history && learningData.version_history.length > 0 && (
+                  <div className="mt-3">
+                    <div className="text-[10px] font-semibold text-gray-700 mb-1">Version History</div>
+                    <div className="space-y-1">
+                      {learningData.version_history.slice(0, 3).map((v, idx) => (
+                        <div key={idx} className={`text-[9px] p-1.5 rounded border flex items-center justify-between ${
+                          v.deployed ? 'bg-violet-50 border-violet-200' : 'bg-gray-50 border-gray-200'
+                        }`}>
+                          <span className="font-mono">v{v.version}</span>
+                          <span className="text-gray-500">{v.training_samples_count} samples</span>
+                          <span className={v.deployed ? 'text-violet-700 font-semibold' : 'text-gray-400'}>
+                            {v.deployed ? '● Active' : '○ Inactive'}
+                          </span>
+                          <span className={`font-semibold ${
+                            (v.improvement_delta || 0) > 0 ? 'text-emerald-600' : 'text-gray-500'
+                          }`}>
+                            {v.improvement_delta != null
+                              ? `${(v.improvement_delta > 0 ? '+' : '')}${(v.improvement_delta * 100).toFixed(1)}%`
+                              : ''}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
 }
+

@@ -1011,6 +1011,80 @@ def process_document(self, document_id: str) -> dict:
             metadata["stages"]["validation"] = {"status": "failed", "error": str(exc)}
 
         # --------------------------------------------------------------
+        # Stage 6b: CONFIDENCE SCORING
+        # --------------------------------------------------------------
+        confidence_report = None
+        try:
+            from app.services.confidence_service import score_document_fields
+            confidence_report = score_document_fields(fields)
+            metadata["stages"]["confidence"] = {
+                "status": "ok",
+                **confidence_report.to_dict(),
+            }
+            # Flag for review if overall confidence is LOW or UNCERTAIN
+            if confidence_report.overall_category in ("LOW", "UNCERTAIN"):
+                requires_review = True
+            logger.info(
+                "%s[CONFIDENCE] Overall=%.2f (%s), flagged=%d",
+                log_prefix, confidence_report.overall_confidence,
+                confidence_report.overall_category,
+                len(confidence_report.flagged_fields),
+            )
+        except Exception as exc:
+            logger.warning("%s[CONFIDENCE] Failed (non-critical): %s", log_prefix, exc)
+            metadata["stages"]["confidence"] = {"status": "failed", "error": str(exc)}
+
+        # --------------------------------------------------------------
+        # Stage 6c: CROSS-DATABASE VERIFICATION
+        # --------------------------------------------------------------
+        verification_report = None
+        try:
+            from app.services.verification_service import verify_against_reference
+            verification_report = verify_against_reference(str(doc_id), fields)
+            metadata["stages"]["verification"] = {
+                "status": "ok",
+                **verification_report.to_dict(),
+            }
+            if verification_report.mismatch_count > 0:
+                requires_review = True
+            logger.info(
+                "%s[VERIFICATION] status=%s, matches=%d, mismatches=%d",
+                log_prefix, verification_report.overall_status,
+                verification_report.match_count,
+                verification_report.mismatch_count,
+            )
+        except Exception as exc:
+            logger.warning("%s[VERIFICATION] Failed (non-critical): %s", log_prefix, exc)
+            metadata["stages"]["verification"] = {"status": "failed", "error": str(exc)}
+
+        # --------------------------------------------------------------
+        # Stage 6d: DUPLICATE DETECTION
+        # --------------------------------------------------------------
+        duplicate_report = None
+        try:
+            from app.services.duplicate_service import detect_duplicates
+            duplicate_report = detect_duplicates(
+                str(doc_id),
+                file_bytes=file_bytes,
+                fields=fields,
+            )
+            metadata["stages"]["duplicate_detection"] = {
+                "status": "ok",
+                **duplicate_report.to_dict(),
+            }
+            if duplicate_report.has_file_duplicate or duplicate_report.has_content_duplicate:
+                requires_review = True
+            logger.info(
+                "%s[DUPLICATE] file_dup=%s, content_dup=%s, total=%d",
+                log_prefix, duplicate_report.has_file_duplicate,
+                duplicate_report.has_content_duplicate,
+                len(duplicate_report.duplicates),
+            )
+        except Exception as exc:
+            logger.warning("%s[DUPLICATE] Failed (non-critical): %s", log_prefix, exc)
+            metadata["stages"]["duplicate_detection"] = {"status": "failed", "error": str(exc)}
+
+        # --------------------------------------------------------------
         # Stage 7: STORE RESULTS (Idempotent DB update)
         # --------------------------------------------------------------
         results_to_save: list[dict] = []
@@ -1021,11 +1095,38 @@ def process_document(self, document_id: str) -> dict:
         else:
             validation_map = {}
 
+        # Build confidence map
+        confidence_map: dict[str, dict] = {}
+        if confidence_report:
+            for fc in confidence_report.field_scores:
+                confidence_map[fc.field_name] = {
+                    "category": fc.category,
+                    "needs_review": fc.needs_review,
+                }
+
+        # Build verification map
+        verification_map: dict[str, dict] = {}
+        if verification_report:
+            for fv in verification_report.field_verifications:
+                verification_map[fv.field_name] = {
+                    "status": fv.status,
+                    "reference_value": fv.reference_value,
+                }
+
         for ef in fields:
             f_name = getattr(ef, "field_name", getattr(ef, "entity_type", ""))
             f_val = getattr(ef, "field_value", getattr(ef, "extracted_value", None))
             is_valid = validation_map.get(f_name, True)
-            
+            conf_info = confidence_map.get(f_name, {})
+            verif_info = verification_map.get(f_name, {})
+
+            # Determine validation_status from multiple signals
+            v_status = "valid" if is_valid else "invalid"
+            if verif_info.get("status") == "MISMATCH":
+                v_status = "mismatch"
+            elif conf_info.get("needs_review"):
+                v_status = "review_needed" if is_valid else "invalid"
+
             results_to_save.append({
                 "field_name": f_name,
                 "field_value": f_val,
@@ -1041,7 +1142,7 @@ def process_document(self, document_id: str) -> dict:
                 "extraction_method": getattr(ef, "extraction_method", "key_value_extraction"),
                 "canonical_key": getattr(ef, "canonical_key", None),
                 "validated": is_valid,
-                "validation_status": "valid" if is_valid else "invalid",
+                "validation_status": v_status,
                 "anomaly_flag": False,
                 "anomaly_reason": None,
             })
@@ -1062,6 +1163,22 @@ def process_document(self, document_id: str) -> dict:
         _save_results(doc_id, results_to_save)
 
         # --------------------------------------------------------------
+        # Stage 7b: STORE VALIDATION RESULTS
+        # --------------------------------------------------------------
+        try:
+            _save_validation_results(
+                doc_id, results_to_save,
+                confidence_report=confidence_report,
+                verification_report=verification_report,
+                duplicate_report=duplicate_report,
+                anomalies=anomalies,
+            )
+            metadata["stages"]["validation_storage"] = {"status": "ok"}
+        except Exception as exc:
+            logger.warning("%s[VALIDATION_STORAGE] Failed (non-critical): %s", log_prefix, exc)
+            metadata["stages"]["validation_storage"] = {"status": "failed", "error": str(exc)}
+
+        # --------------------------------------------------------------
         # Stage 8: Final status
         # --------------------------------------------------------------
         metadata["pipeline_end"] = datetime.utcnow().isoformat()
@@ -1073,15 +1190,48 @@ def process_document(self, document_id: str) -> dict:
             processing_metadata=metadata,
         )
 
+        # --------------------------------------------------------------
+        # Stage 8b: LEARNING FEEDBACK (Auto-record verified fields)
+        # --------------------------------------------------------------
+        learning_samples_count = 0
+        try:
+            if final_status == STATUS_COMPLETED:
+                from app.services.learning_service import record_verified_document
+                learning_samples_count = record_verified_document(str(doc_id))
+                metadata["stages"]["learning_feedback"] = {
+                    "status": "ok",
+                    "samples_recorded": learning_samples_count,
+                }
+                logger.info(
+                    "%s[LEARNING] Recorded %d verified fields as training data",
+                    log_prefix, learning_samples_count,
+                )
+            else:
+                metadata["stages"]["learning_feedback"] = {
+                    "status": "skipped",
+                    "reason": f"Document status is {final_status}, not COMPLETED",
+                }
+        except Exception as exc:
+            logger.warning("%s[LEARNING] Failed (non-critical): %s", log_prefix, exc)
+            metadata["stages"]["learning_feedback"] = {"status": "failed", "error": str(exc)}
+
         logger.info(
-            "%s Pipeline complete → %s (anomalies=%d, fields=%d)",
+            "%s Pipeline complete → %s (anomalies=%d, fields=%d, confidence=%s, verification=%s, learning=%d)",
             log_prefix, final_status, len(anomalies), len(fields),
+            confidence_report.overall_category if confidence_report else "N/A",
+            verification_report.overall_status if verification_report else "N/A",
+            learning_samples_count,
         )
         return {
             "status": final_status,
             "field_count": len(fields),
             "anomaly_count": len(anomalies),
             "ml_anomaly_score": ml_anomaly_meta.get("anomaly_score", 0.0),
+            "confidence_overall": confidence_report.overall_confidence if confidence_report else None,
+            "confidence_category": confidence_report.overall_category if confidence_report else None,
+            "verification_status": verification_report.overall_status if verification_report else None,
+            "duplicate_detected": (duplicate_report.has_file_duplicate or duplicate_report.has_content_duplicate) if duplicate_report else False,
+            "learning_samples_recorded": learning_samples_count,
         }
 
     except Exception as exc:
@@ -1100,3 +1250,73 @@ def process_document(self, document_id: str) -> dict:
         except Exception:
             pass
         return {"status": STATUS_FAILED, "error": str(exc)}
+
+
+def _save_validation_results(
+    doc_id: str | uuid.UUID,
+    results_to_save: list[dict],
+    confidence_report: Any = None,
+    verification_report: Any = None,
+    duplicate_report: Any = None,
+    anomalies: list[str] | None = None,
+) -> None:
+    """Persist per-field validation/verification/confidence results to validation_results table."""
+    from app.models.validation_result import ValidationResult
+    from app.models.document_result import DocumentResult
+
+    db = _get_db_session()
+    target_uuid = uuid.UUID(str(doc_id)) if not isinstance(doc_id, uuid.UUID) else doc_id
+
+    try:
+        # Remove existing validation results (idempotent re-runs)
+        db.query(ValidationResult).filter(
+            ValidationResult.document_id == target_uuid
+        ).delete()
+
+        # Build lookup maps
+        confidence_map: dict[str, Any] = {}
+        if confidence_report:
+            for fc in confidence_report.field_scores:
+                confidence_map[fc.field_name] = fc
+
+        verification_map: dict[str, Any] = {}
+        if verification_report:
+            for fv in verification_report.field_verifications:
+                verification_map[fv.field_name] = fv
+
+        # Get document_result IDs for linking
+        doc_results = db.query(DocumentResult).filter(
+            DocumentResult.document_id == target_uuid
+        ).all()
+        result_id_map = {dr.field_name: dr.id for dr in doc_results}
+
+        for field_data in results_to_save:
+            f_name = field_data["field_name"]
+            fc = confidence_map.get(f_name)
+            fv = verification_map.get(f_name)
+
+            vr = ValidationResult(
+                document_id=target_uuid,
+                field_result_id=result_id_map.get(f_name),
+                field_name=f_name,
+                confidence_score=field_data.get("confidence"),
+                confidence_category=fc.category if fc else None,
+                validation_passed=field_data.get("validated", True),
+                validation_errors=None,
+                verification_status=fv.status if fv else None,
+                reference_value=fv.reference_value if fv else None,
+                verification_source=fv.source if fv else None,
+                anomaly_detected=field_data.get("anomaly_flag", False),
+                anomaly_details=field_data.get("anomaly_reason"),
+                is_duplicate_flag=False,
+            )
+            db.add(vr)
+
+        db.commit()
+        logger.info("[%s] Saved %d validation results to DB", doc_id, len(results_to_save))
+    except Exception as exc:
+        logger.error("[%s] Failed to save validation results: %s", doc_id, exc)
+        db.rollback()
+    finally:
+        db.close()
+

@@ -3,6 +3,7 @@ import logging
 from fastapi import FastAPI
 
 from app.api.v1.documents import router as documents_router
+from app.api.v1.integration import router as integration_router
 
 # Import all models so SQLAlchemy's metadata is aware of them for create_all
 import app.models  # noqa: F401
@@ -63,6 +64,13 @@ async def global_exception_handler(request: Request, exc: Exception):
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true"
     return response
+
+# Integration router must be registered BEFORE documents router
+# because documents has /{document_id} catch-all patterns
+app.include_router(
+    integration_router,
+    prefix="/api/v1",
+)
 
 app.include_router(
     documents_router,

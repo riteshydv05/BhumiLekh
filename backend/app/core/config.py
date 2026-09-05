@@ -54,6 +54,14 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
 
+    # ---------------------------------------------------------------------------
+    # JWT Authentication & RBAC
+    # ---------------------------------------------------------------------------
+    JWT_SECRET_KEY: str = "dev-secret-key-change-in-production-immediately"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 hours
+    AUTH_ENABLED: bool = False  # Set True in production
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",
