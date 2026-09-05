@@ -8,17 +8,6 @@ import { Eye, HelpCircle, Languages } from "lucide-react";
 const LANGUAGES = [
   { code: "en", label: "English" },
   { code: "hi", label: "हिन्दी (Hindi)" },
-  { code: "mr", label: "मराठी (Marathi)" },
-  { code: "gu", label: "ગુજરાતી (Gujarati)" },
-  { code: "bn", label: "বাংলা (Bengali)" },
-  { code: "pa", label: "ਪੰਜਾਬੀ (Punjabi)" },
-  { code: "te", label: "తెలుగు (Telugu)" },
-  { code: "ta", label: "தமிழ் (Tamil)" },
-  { code: "kn", label: "ಕನ್ನಡ (Kannada)" },
-  { code: "ml", label: "മലയാളം (Malayalam)" },
-  { code: "or", label: "ଓଡ଼ିଆ (Odia)" },
-  { code: "as", label: "অসমীয়া (Assamese)" },
-  { code: "ur", label: "اردو (Urdu)" },
 ];
 
 export default function TopUtilityBar() {
