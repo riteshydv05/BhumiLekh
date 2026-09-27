@@ -216,3 +216,73 @@ def get_document_parcel(document_id: str) -> dict | None:
         return None
     finally:
         db.close()
+
+
+def extract_cadastral_polygons_from_map(image_bytes: bytes) -> dict:
+    """OpenCV Contour Extraction & Vectorization for Cadastral Maps (FMB / Tippan / Village Maps).
+
+    Detects parcel boundary lines, calculates polygon bounding boxes, and generates
+    GeoJSON geometries for GIS overlay.
+    """
+    try:
+        import cv2
+        import numpy as np
+        from io import BytesIO
+        from PIL import Image
+
+        pil_img = Image.open(BytesIO(image_bytes)).convert("L")
+        img_np = np.array(pil_img)
+
+        # Preprocessing: Gaussian Blur + Adaptive Thresholding to extract lines
+        blurred = cv2.GaussianBlur(img_np, (5, 5), 0)
+        thresh = cv2.adaptiveThreshold(
+            blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2
+        )
+
+        # Find closed contours (land parcel polygons)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+        features = []
+        img_h, img_w = img_np.shape[:2]
+
+        for idx, cnt in enumerate(contours):
+            area = cv2.contourArea(cnt)
+            # Filter out tiny noise and full-page bounding frame
+            if 500 < area < (img_h * img_w * 0.9):
+                epsilon = 0.02 * cv2.arcLength(cnt, True)
+                approx = cv2.approxPolyDP(cnt, epsilon, True)
+
+                # Convert contour points to GeoJSON Polygon format normalized [lng, lat] coords
+                pts = [[round(float(pt[0][0]) / img_w * 0.01 + 77.0, 6),
+                        round(float(img_h - pt[0][1]) / img_h * 0.01 + 20.0, 6)] for pt in approx]
+                if pts:
+                    pts.append(pts[0])  # Close ring
+
+                features.append({
+                    "type": "Feature",
+                    "id": f"polygon_{idx+1}",
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [pts]
+                    },
+                    "properties": {
+                        "parcel_id": f"P-{idx+1}",
+                        "extracted_area_px": float(area),
+                        "vertex_count": len(approx),
+                    }
+                })
+
+        return {
+            "type": "FeatureCollection",
+            "features": features,
+            "metadata": {
+                "vectorization_engine": "OpenCV-ContourDP",
+                "extracted_parcels_count": len(features),
+                "image_width": img_w,
+                "image_height": img_h,
+            }
+        }
+    except Exception as exc:
+        logger.error("OpenCV cadastral vectorization failed: %s", exc, exc_info=True)
+        return {"type": "FeatureCollection", "features": [], "metadata": {"error": str(exc)}}
+

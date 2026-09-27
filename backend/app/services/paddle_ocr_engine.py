@@ -1,25 +1,11 @@
-"""PaddleOCR Engine — singleton initialization and per-image OCR.
+"""PaddleOCR Engine — dynamic multi-language engine registry and per-image OCR.
 
 Design:
-  - PaddleOCR is initialized ONCE (lazily, on first use) and reused.
-  - Initialization is thread-safe via a module-level lock.
-  - The engine is loaded in the Celery worker process, not in the FastAPI process.
-  - Graceful degradation: if PaddleOCR cannot initialize, all calls return
-    empty results and log a warning. The pipeline continues.
-
-Supported languages (PP-OCRv6):
-  en (English), ch (Simplified Chinese), chinese_cht (Traditional Chinese),
-  japan (Japanese), plus LATIN_LANGS (includes: hi for Devanagari via Indic pack)
-
-For multilingual Indian documents, use lang='en' as default.
-The model handles mixed-script documents reasonably well.
-
-Configuration (via environment variables):
-  PADDLE_OCR_LANG        Language code (default: "en")
-  PADDLE_OCR_USE_ANGLE   Enable textline orientation correction (default: "false")
-  PADDLE_OCR_DET_THRESH  Detection threshold 0.0–1.0 (default: "0.3")
-  PADDLE_OCR_REC_THRESH  Recognition threshold 0.0–1.0 (default: "0.0")
-  PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK  Set "True" to skip connectivity check
+  - PaddleOCR instances are lazily instantiated per script/language and cached in a thread-safe registry.
+  - Supports Indic scripts (Devanagari, Tamil, Telugu, Kannada, Malayalam, Gujarati, Bengali, Punjabi) as well as English.
+  - Script detection automatically resolves script codes from text or explicit requested language.
+  - Graceful degradation: if PaddleOCR cannot initialize for a language, all calls return
+    empty results and log a warning.
 """
 from __future__ import annotations
 
@@ -41,7 +27,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
 
-_LANG = os.environ.get("PADDLE_OCR_LANG", "hi")
+_DEFAULT_LANG = os.environ.get("PADDLE_OCR_LANG", "hi")
 _USE_ANGLE = os.environ.get("PADDLE_OCR_USE_ANGLE", "false").lower() == "true"
 _DET_THRESH = float(os.environ.get("PADDLE_OCR_DET_THRESH", "0.3"))
 _REC_THRESH = float(os.environ.get("PADDLE_OCR_REC_THRESH", "0.0"))
@@ -49,14 +35,26 @@ _DET_MODEL = os.environ.get("PADDLE_OCR_DET_MODEL", "PP-OCRv4_mobile_det")
 _REC_MODEL = os.environ.get("PADDLE_OCR_REC_MODEL")
 _REC_BATCH_SIZE = int(os.environ.get("PADDLE_OCR_REC_BATCH_SIZE", "8"))
 
+# Language alias mapping to PaddleOCR language codes / models
+LANG_MAP: dict[str, str] = {
+    "hi": "hi", "hindi": "hi", "mr": "hi", "marathi": "hi", "ne": "hi", "sa": "hi", "devanagari": "hi",
+    "en": "en", "english": "en",
+    "ta": "ta", "tamil": "ta",
+    "te": "te", "telugu": "te",
+    "kn": "kn", "kannada": "kn",
+    "ml": "ml", "malayalam": "ml",
+    "gu": "gu", "gujarati": "gu",
+    "bn": "bn", "bengali": "bn",
+    "pa": "pa", "punjabi": "pa",
+    "or": "or", "odia": "or",
+}
+
 # ---------------------------------------------------------------------------
-# Singleton state
+# Engine Registry state (Thread-safe)
 # ---------------------------------------------------------------------------
-_ocr_instance = None
+_ocr_registry: dict = {}
 _init_lock = threading.Lock()
-_init_attempted = False
-_init_failed = False
-_init_error: str | None = None
+_failed_languages: set = set()
 
 # ---------------------------------------------------------------------------
 # Optional import check
@@ -67,53 +65,81 @@ try:
     _PADDLE_IMPORTABLE = True
 except ImportError as _import_err:
     _PADDLE_IMPORTABLE = False
-    _import_error_msg = str(_import_err)
-    logger.warning(
-        "paddleocr not importable — PaddleOCR engine disabled: %s", _import_err
-    )
+    logger.warning("paddleocr not importable — PaddleOCR engine disabled: %s", _import_err)
 
 
-def _get_engine() -> "_PaddleOCR | None":
-    """Return the shared PaddleOCR instance, initializing if needed.
+def detect_script(text: str) -> str:
+    """Detect script language code from text using Unicode ranges."""
+    devanagari_count = sum(1 for c in text if '\u0900' <= c <= '\u097F')
+    tamil_count = sum(1 for c in text if '\u0B80' <= c <= '\u0BFF')
+    telugu_count = sum(1 for c in text if '\u0C00' <= c <= '\u0C7F')
+    kannada_count = sum(1 for c in text if '\u0C80' <= c <= '\u0CFF')
+    malayalam_count = sum(1 for c in text if '\u0D00' <= c <= '\u0D7F')
+    gujarati_count = sum(1 for c in text if '\u0A80' <= c <= '\u0AFF')
+    bengali_count = sum(1 for c in text if '\u0980' <= c <= '\u09FF')
+    punjabi_count = sum(1 for c in text if '\u0A00' <= c <= '\u0A7F')
 
-    Thread-safe. Returns None if initialization fails.
-    Never raises.
+    counts = {
+        "hi": devanagari_count,
+        "ta": tamil_count,
+        "te": telugu_count,
+        "kn": kannada_count,
+        "ml": malayalam_count,
+        "gu": gujarati_count,
+        "bn": bengali_count,
+        "pa": punjabi_count,
+    }
+
+    max_lang = max(counts, key=counts.get)
+    if counts[max_lang] > 0:
+        return max_lang
+    return "en"
+
+
+def _normalize_lang(lang: str | None) -> str:
+    if not lang or lang == "auto":
+        return LANG_MAP.get(_DEFAULT_LANG, "hi")
+    clean = lang.lower().strip()
+    return LANG_MAP.get(clean, "hi")
+
+
+def _get_engine(lang: str = "hi"):
+    """Return the shared PaddleOCR instance for the requested language.
+
+    Thread-safe. Lazy loading per language. Returns None on failure.
     """
-    global _ocr_instance, _init_attempted, _init_failed, _init_error
-
     if not _PADDLE_IMPORTABLE:
         return None
 
-    # Fast path: already initialized
-    if _ocr_instance is not None:
-        return _ocr_instance
-    if _init_failed:
+    norm_lang = _normalize_lang(lang)
+
+    if norm_lang in _ocr_registry:
+        return _ocr_registry[norm_lang]
+    if norm_lang in _failed_languages:
         return None
 
     with _init_lock:
-        # Double-check after acquiring lock
-        if _ocr_instance is not None:
-            return _ocr_instance
-        if _init_failed:
+        if norm_lang in _ocr_registry:
+            return _ocr_registry[norm_lang]
+        if norm_lang in _failed_languages:
             return None
-
-        _init_attempted = True
 
         rec_model = _REC_MODEL
         if not rec_model:
-            if _LANG in ("hi", "mr", "ne", "sa", "devanagari"):
+            if norm_lang == "hi":
                 rec_model = "devanagari_PP-OCRv5_mobile_rec"
-            else:
+            elif norm_lang == "en":
                 rec_model = "en_PP-OCRv5_mobile_rec"
+            else:
+                rec_model = None
 
         logger.info(
-            "PaddleOCR: initializing engine (lang=%s, det=%s, rec=%s, angle_cls=%s, batch_size=%d)",
-            _LANG, _DET_MODEL, rec_model, _USE_ANGLE, _REC_BATCH_SIZE,
+            "PaddleOCR: initializing engine for lang=%s (det=%s, rec=%s)",
+            norm_lang, _DET_MODEL, rec_model or "default",
         )
         try:
-            # Fast path: mobile detection + mobile recognition with batch processing
-            try:
-                _ocr_instance = _PaddleOCR(
+            if rec_model:
+                engine = _PaddleOCR(
                     text_detection_model_name=_DET_MODEL,
                     text_recognition_model_name=rec_model,
                     text_recognition_batch_size=_REC_BATCH_SIZE,
@@ -123,28 +149,38 @@ def _get_engine() -> "_PaddleOCR | None":
                     text_det_thresh=_DET_THRESH,
                     text_rec_score_thresh=_REC_THRESH,
                 )
-            except Exception as opt_err:
-                logger.warning(
-                    "PaddleOCR: mobile model init failed, falling back to standard init: %s", opt_err
-                )
-                _ocr_instance = _PaddleOCR(
-                    lang=_LANG,
+            else:
+                engine = _PaddleOCR(
+                    lang=norm_lang,
                     use_doc_orientation_classify=False,
                     use_doc_unwarping=False,
                     use_textline_orientation=_USE_ANGLE,
                     text_det_thresh=_DET_THRESH,
                     text_rec_score_thresh=_REC_THRESH,
                 )
-            logger.info("PaddleOCR: engine initialized successfully (lang=%s)", _LANG)
+            _ocr_registry[norm_lang] = engine
+            logger.info("PaddleOCR: engine initialized successfully for lang=%s", norm_lang)
+            return engine
         except Exception as exc:
-            _init_failed = True
-            _init_error = str(exc)
-            logger.error(
-                "PaddleOCR: initialization failed — OCR disabled: %s", exc, exc_info=True
+            logger.warning(
+                "PaddleOCR: specific init for lang=%s failed (%s), falling back to lang parameter init",
+                norm_lang, exc
             )
-            return None
-
-    return _ocr_instance
+            try:
+                engine = _PaddleOCR(
+                    lang=norm_lang,
+                    use_doc_orientation_classify=False,
+                    use_doc_unwarping=False,
+                    use_textline_orientation=_USE_ANGLE,
+                )
+                _ocr_registry[norm_lang] = engine
+                return engine
+            except Exception as exc2:
+                _failed_languages.add(norm_lang)
+                logger.error(
+                    "PaddleOCR: initialization failed for lang=%s — %s", norm_lang, exc2
+                )
+                return None
 
 
 # ---------------------------------------------------------------------------
@@ -162,17 +198,12 @@ def _poly_to_bbox(poly: list) -> list[float]:
 
 
 def _parse_result(paddle_result) -> list[dict]:
-    """Parse a single PaddleOCR result object (dict/json/list) into block dicts.
-
-    Each dict has keys: text, bbox, confidence, poly.
-    Returns empty list on any parsing error.
-    """
+    """Parse a single PaddleOCR result object into block dicts."""
     blocks: list[dict] = []
     if paddle_result is None:
         return blocks
 
     try:
-        # Case A: Object with .json property (Paddlex / PaddleOCR 3.x predict)
         res = {}
         if hasattr(paddle_result, "json"):
             json_data = paddle_result.json
@@ -210,7 +241,6 @@ def _parse_result(paddle_result) -> list[dict]:
                 })
             return blocks
 
-        # Case B: Standard PaddleOCR ocr() list structure: [[[box], (text, score)], ...]
         if isinstance(paddle_result, list):
             for item in paddle_result:
                 if isinstance(item, list) and len(item) >= 2:
@@ -241,26 +271,9 @@ def run_paddle_ocr_on_image(
     image: "PILImage",
     page_num: int = 1,
     ocr_engine: str = "paddle",
+    lang: str = "auto",
 ) -> dict:
-    """Run PaddleOCR on a single PIL Image.
-
-    Returns a page-level OCR dict matching the normalized schema::
-
-        {
-            "page": 1,
-            "width": 1240,
-            "height": 1754,
-            "blocks": [
-                {
-                    "text": "Survey No: 245/A",
-                    "bbox": [18.0, 39.0, 101.0, 52.0],
-                    "confidence": 0.9987,
-                    "language": null,
-                    "ocr_engine": "paddle",
-                    "timestamp": "2026-09-04T13:00:00"
-                }
-            ]
-        }
+    """Run PaddleOCR on a single PIL Image with script/language routing.
 
     Never raises — returns empty blocks on failure.
     """
@@ -272,18 +285,22 @@ def run_paddle_ocr_on_image(
         "blocks": [],
     }
 
-    engine = _get_engine()
+    engine = _get_engine(lang=lang)
+    if engine is None:
+        # Retry fallback with default language
+        engine = _get_engine(lang="hi")
+
     if engine is None:
         logger.warning(
-            "PaddleOCR: engine not available for page %d — returning empty", page_num
+            "PaddleOCR: engine not available for page %d (lang=%s) — returning empty",
+            page_num, lang,
         )
         return page_dict
 
     try:
-        # PaddleOCR 3.x accepts PIL Images, numpy arrays, or file paths
         img_array = np.array(image.convert("RGB"))
 
-        results = engine.predict(img_array)
+        results = engine.predict(img_array) if hasattr(engine, "predict") else engine.ocr(img_array)
         if not results:
             logger.info("PaddleOCR: no results for page %d", page_num)
             return page_dict
@@ -296,7 +313,7 @@ def run_paddle_ocr_on_image(
                 "text": b["text"],
                 "bbox": b["bbox"],
                 "confidence": b["confidence"],
-                "language": None,   # PaddleOCR 3.x doesn't return per-block lang
+                "language": lang if lang != "auto" else detect_script(b["text"]),
                 "ocr_engine": ocr_engine,
                 "timestamp": ts,
             }
@@ -304,13 +321,14 @@ def run_paddle_ocr_on_image(
         ]
 
         logger.info(
-            "PaddleOCR: page %d — %d blocks extracted",
-            page_num, len(page_dict["blocks"]),
+            "PaddleOCR: page %d (lang=%s) — %d blocks extracted",
+            page_num, lang, len(page_dict["blocks"]),
         )
 
     except Exception as exc:
         logger.error(
-            "PaddleOCR: error processing page %d: %s", page_num, exc, exc_info=True
+            "PaddleOCR: error processing page %d (lang=%s): %s",
+            page_num, lang, exc, exc_info=True,
         )
 
     return page_dict
@@ -320,10 +338,7 @@ def get_engine_status() -> dict:
     """Return engine initialization status for health-checks/diagnostics."""
     return {
         "importable": _PADDLE_IMPORTABLE,
-        "initialized": _ocr_instance is not None,
-        "init_attempted": _init_attempted,
-        "init_failed": _init_failed,
-        "init_error": _init_error,
-        "lang": _LANG,
+        "loaded_languages": list(_ocr_registry.keys()),
+        "failed_languages": list(_failed_languages),
         "use_angle_cls": _USE_ANGLE,
     }

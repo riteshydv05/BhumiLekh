@@ -20,7 +20,18 @@ from app.services.layoutlmv3_service import (
 
 from app.services.ocr_result_schema import OcrBlock, OcrDocument, OcrPage
 
-from app.services.ocr_service import OCRResult, run_ocr, run_ocr_structured
+from app.services.ocr_service import (
+    OCRResult,
+    run_ocr,
+    run_ocr_structured,
+    run_ocr_with_script_detection,
+)
+
+from app.services.script_detector import (
+    ScriptDetectionResult,
+    detect_script_from_document,
+    detect_script_from_image,
+)
 
 from app.services.anomaly_service import (
     AnomalyResult,
@@ -38,6 +49,10 @@ __all__ = [
     "OCRResult",
     "run_ocr",
     "run_ocr_structured",
+    "run_ocr_with_script_detection",
+    "ScriptDetectionResult",
+    "detect_script_from_document",
+    "detect_script_from_image",
     "LayoutBlock",
     "LayoutDocument",
     "LayoutInferenceResult",

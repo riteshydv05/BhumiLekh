@@ -380,6 +380,56 @@ _LAND_RECORD_PATTERNS: dict[str, list[tuple[re.Pattern[str], float]]] = {
             re.IGNORECASE,
         ), 0.85),
     ],
+    "ta": [
+        # Tamil Patta / Survey Number (புல எண் / பட்டா எண்)
+        (re.compile(r"(?:பட்டா\s*எண்|பட்டா|புல\s*எண்|சர்வே\s*எண்)\s*[:\-]?\s*([0-9A-Za-z\/\-\.]+)", re.IGNORECASE), 0.90),
+        # Tamil Owner Name (உரிமையாளர் பெயர்)
+        (re.compile(r"(?:உரிமையாளர்\s*பெயர்|பெயர்|பட்டாதாரர்)\s*[:\-]?\s*([\u0B80-\u0BFF\s\.]{2,50})", re.IGNORECASE), 0.80),
+        # Village / Taluk / District (கிராமம் / வட்டம் / மாவட்டம்)
+        (re.compile(r"(?:கிராமம்|ஊர்)\s*[:\-]?\s*([\u0B80-\u0BFF\s]{2,30})", re.IGNORECASE), 0.82),
+        (re.compile(r"(?:வட்டம்|தாலுகா)\s*[:\-]?\s*([\u0B80-\u0BFF\s]{2,30})", re.IGNORECASE), 0.82),
+        (re.compile(r"(?:மாவட்டம்)\s*[:\-]?\s*([\u0B80-\u0BFF\s]{2,30})", re.IGNORECASE), 0.82),
+        # Area (பரப்பளவு)
+        (re.compile(r"(?:பரப்பளவு|விஸ்தீரணம்)\s*[:\-]?\s*([0-9\.\s]+(?:\s*(?:ஹெக்டேர்|ஏக்கர்|சதுர\s*மீட்டர்))?)", re.IGNORECASE), 0.85),
+    ],
+    "te": [
+        # Telugu Survey / Khata (ఖాతా సంఖ్య / సర్వే నంబర్ / అడంగల్)
+        (re.compile(r"(?:సర్వే\s*నంబర్|సర్వే\s*నం\.?|ఖాతా\s*సంఖ్య|ఖాతా)\s*[:\-]?\s*([0-9A-Za-z\/\-\.]+)", re.IGNORECASE), 0.90),
+        # Owner Name (పట్టాదారు పేరు)
+        (re.compile(r"(?:పట్టాదారు\s*పేరు|భూమిహక్కుదారు|పేరు)\s*[:\-]?\s*([\u0C00-\u0C7F\s\.]{2,50})", re.IGNORECASE), 0.80),
+        # Village / Mandal / District (గ్రామం / మండలం / జిల్లా)
+        (re.compile(r"(?:గ్రామం)\s*[:\-]?\s*([\u0C00-\u0C7F\s]{2,30})", re.IGNORECASE), 0.82),
+        (re.compile(r"(?:మండలం)\s*[:\-]?\s*([\u0C00-\u0C7F\s]{2,30})", re.IGNORECASE), 0.82),
+        (re.compile(r"(?:జిల్లా)\s*[:\-]?\s*([\u0C00-\u0C7F\s]{2,30})", re.IGNORECASE), 0.82),
+    ],
+    "kn": [
+        # Kannada Survey / Khata (ಸರ್ವೇ ನಂಬರ್ / ಖಾತಾ ಸಂಖ್ಯೆ / ಪಹಣಿ)
+        (re.compile(r"(?:ಸರ್ವೇ\s*ನಂಬರ್|ಖಾತಾ\s*ಸಂಖ್ಯೆ|ಹಿಸ್ಸಾ\s*ನಂಬರ್)\s*[:\-]?\s*([0-9A-Za-z\/\-\.]+)", re.IGNORECASE), 0.90),
+        # Owner Name (ಮಾಲೀಕರ ಹೆಸರು)
+        (re.compile(r"(?:ಮಾಲೀಕರ\s*ಹೆಸರು|ಖಾತೆದಾರರ\s*ಹೆಸರು|ಹೆಸರು)\s*[:\-]?\s*([\u0C80-\u0CFF\s\.]{2,50})", re.IGNORECASE), 0.80),
+        # Village / Taluk / District (ಗ್ರಾಮ / ತಾಲೂಕು / ಜಿಲ್ಲೆ)
+        (re.compile(r"(?:ಗ್ರಾಮ)\s*[:\-]?\s*([\u0C80-\u0CFF\s]{2,30})", re.IGNORECASE), 0.82),
+        (re.compile(r"(?:ತಾಲೂಕು)\s*[:\-]?\s*([\u0C80-\u0CFF\s]{2,30})", re.IGNORECASE), 0.82),
+        (re.compile(r"(?:ಜಿಲ್ಲೆ)\s*[:\-]?\s*([\u0C80-\u0CFF\s]{2,30})", re.IGNORECASE), 0.82),
+    ],
+    "gu": [
+        # Gujarati Survey / Khata (સર્વે નંબર / ખાતા નંબર / ૭/૧૨)
+        (re.compile(r"(?:સર્વે\s*નંબર|ખાતા\s*નંબર|બ્લોક\s*નંબર)\s*[:\-]?\s*([0-9૦-૯A-Za-z\/\-\.]+)", re.IGNORECASE), 0.90),
+        # Owner Name (ખાતેદારનું નામ)
+        (re.compile(r"(?:ખાતેદારનું\s*નામ|જમીન\s*માલિક|નામ)\s*[:\-]?\s*([\u0A80-\u0AFF\s\.]{2,50})", re.IGNORECASE), 0.80),
+    ],
+    "bn": [
+        # Bengali Khatian / Dag Number (খতিয়ান নং / দাগ নং)
+        (re.compile(r"(?:খতিয়ান\s*নং|দাগ\s*নং|মৌজা)\s*[:\-]?\s*([0-9০-৯A-Za-z\/\-\.]+)", re.IGNORECASE), 0.90),
+        # Owner Name (মালিকের নাম)
+        (re.compile(r"(?:মালিকের\s*নাম|রায়তের\s*নাম|নাম)\s*[:\-]?\s*([\u0980-\u09FF\s\.]{2,50})", re.IGNORECASE), 0.80),
+    ],
+    "pa": [
+        # Punjabi Khasra / Khatauni (ਖਸਰਾ ਨੰਬਰ / ਖਤੌਨੀ)
+        (re.compile(r"(?:ਖਸਰਾ\s*ਨੰਬਰ|ਖੇਵਟ\s*ਨੰਬਰ|ਖਤੌਨੀ)\s*[:\-]?\s*([0-9੦-੯A-Za-z\/\-\.]+)", re.IGNORECASE), 0.90),
+        # Owner Name (ਮਾਲਕ ਦਾ ਨਾਂ)
+        (re.compile(r"(?:ਮਾਲਕ\s*ਦਾ\s*ਨਾਂ|ਨਾਮ)\s*[:\-]?\s*([\u0A00-\u0A7F\s\.]{2,50})", re.IGNORECASE), 0.80),
+    ],
     "mr": [
         # Survey / Gat / Bhumapan Number (7/12 & 8A)
         (re.compile(

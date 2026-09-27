@@ -1,9 +1,35 @@
 """OCR Service — multilingual document text extraction.
 
-Engine priority (per document type):
+Full pipeline position
+----------------------
 
+    Upload Document
+          ↓
+    Document Preprocessing
+          ↓
+    Script / Language Detection  ← script_detector.py  (lightweight, pre-OCR)
+          ↓                         3-stage cascade:
+          │                           1. Embedded text probe  (PDF text-layer)
+          │                           2. Tesseract OSD        (image-based)
+          │                           3. Fast OCR probe       (Unicode counting)
+          ↓
+    OCR Router
+     ┌──────┬──────┬──────┬──────┐
+    Hindi  Tamil Telugu Kannada English  …
+     └──────┴──────┴──────┴──────┘
+          ↓
+    Text Extraction
+          ↓
+    Land-Field Extraction
+          ↓
+    Validation / Verification
+          ↓
+    Structured Record → PostgreSQL / PostGIS
+
+Engine priority (per document type)
+------------------------------------
 PDF documents:
-  1. PaddleOCR (primary) — converts each page to an image, runs PP-OCRv6
+  1. PaddleOCR (primary) — converts each page to an image, runs PP-OCRv4/v6
   2. pypdf text extraction (fallback) — pure-Python, works on text-based PDFs
 
 Image documents (JPEG/PNG/TIFF):
@@ -14,6 +40,17 @@ All results are returned as both:
   - ``OCRResult``   — legacy flat struct (backward compatible with existing pipeline)
   - ``OcrDocument`` — normalized block-level struct with bounding boxes and confidence
                       (for LayoutLMv3 and downstream spatial processing)
+
+Key public functions
+--------------------
+``run_ocr_with_script_detection()``
+    **Preferred entry point.**  Auto-detects script/language FIRST (no manual
+    language selection needed), then routes to the matching OCR engine.
+    Returns a combined dict with both the detection result and OCR output.
+
+``run_ocr()``
+    Lower-level function that accepts an explicit ``language`` parameter.
+    Used internally and for cases where language is already known.
 """
 from __future__ import annotations
 
@@ -223,7 +260,7 @@ def _extract_text_image_tesseract(
 # Primary: PaddleOCR pipeline (PDF via image rendering + direct image)
 # ---------------------------------------------------------------------------
 
-def _run_paddle_on_pdf(file_bytes: bytes) -> tuple[list[dict], int, float]:
+def _run_paddle_on_pdf(file_bytes: bytes, language: str = "auto") -> tuple[list[dict], int, float]:
     """Render each PDF page and run PaddleOCR.
 
     Returns (pages_list, page_count, avg_confidence).
@@ -240,7 +277,7 @@ def _run_paddle_on_pdf(file_bytes: bytes) -> tuple[list[dict], int, float]:
     all_conf: list[float] = []
 
     for page_num, pil_img, w, h in page_renders:
-        page_dict = run_paddle_ocr_on_image(pil_img, page_num=page_num)
+        page_dict = run_paddle_ocr_on_image(pil_img, page_num=page_num, lang=language)
         pages.append(page_dict)
         for block in page_dict["blocks"]:
             if block["confidence"] > 0:
@@ -252,6 +289,7 @@ def _run_paddle_on_pdf(file_bytes: bytes) -> tuple[list[dict], int, float]:
 
 def _run_paddle_on_image_bytes(
     file_bytes: bytes,
+    language: str = "auto",
 ) -> tuple[list[dict], float]:
     """Decode image bytes and run PaddleOCR.
 
@@ -261,7 +299,7 @@ def _run_paddle_on_image_bytes(
     from app.services.paddle_ocr_engine import run_paddle_ocr_on_image
 
     img = Image.open(BytesIO(file_bytes)).convert("RGB")
-    page_dict = run_paddle_ocr_on_image(img, page_num=1)
+    page_dict = run_paddle_ocr_on_image(img, page_num=1, lang=language)
 
     all_conf = [b["confidence"] for b in page_dict["blocks"] if b["confidence"] > 0]
     avg_conf = sum(all_conf) / len(all_conf) if all_conf else 0.0
@@ -276,7 +314,7 @@ def run_ocr(file_bytes: bytes, content_type: str, language: str = "auto") -> OCR
     """Run OCR on a document, returning a backward-compatible OCRResult.
 
     Engine selection:
-      - PaddleOCR is tried first for all supported types.
+      - PaddleOCR is tried first for all supported types with script routing.
       - pypdf text extraction is the PDF fallback.
       - Tesseract is the image fallback (uses requested language).
 
@@ -294,18 +332,18 @@ def run_ocr(file_bytes: bytes, content_type: str, language: str = "auto") -> OCR
     if content_type == "application/pdf":
         result.page_count = 0  # Will be set by the chosen method
         try:
-            pages, page_count, avg_conf = _run_paddle_on_pdf(file_bytes)
+            pages, page_count, avg_conf = _run_paddle_on_pdf(file_bytes, language=language)
             result.pages = pages
             result.page_count = page_count
             result.confidence = round(avg_conf, 4)
             result.text = "\n\n".join(
                 "\n".join(b["text"] for b in p["blocks"]) for p in pages
             )
-            result.method = "paddle+pypdfium2"
+            result.method = f"paddle({language})+pypdfium2"
             paddle_succeeded = True
             logger.info(
-                "PaddleOCR PDF: %d pages, %d chars, conf=%.2f",
-                page_count, len(result.text), avg_conf,
+                "PaddleOCR PDF (%s): %d pages, %d chars, conf=%.2f",
+                language, page_count, len(result.text), avg_conf,
             )
         except Exception as exc:
             logger.warning(
@@ -321,7 +359,6 @@ def run_ocr(file_bytes: bytes, content_type: str, language: str = "auto") -> OCR
             try:
                 text, page_count, pages = _extract_text_pdf_pypdf(file_bytes)
                 if text.strip():
-                    # Use pypdf results only if they give something
                     if not result.text.strip():
                         result.text = text
                         result.page_count = page_count
@@ -332,7 +369,6 @@ def run_ocr(file_bytes: bytes, content_type: str, language: str = "auto") -> OCR
                             "pypdf fallback: %d pages, %d chars", page_count, len(text)
                         )
                     else:
-                        # PaddleOCR succeeded but was empty — merge text from pypdf
                         result.text = text
                         result.method += "+pypdf_text_merge"
                         logger.info("Merged pypdf text with empty PaddleOCR result")
@@ -347,28 +383,26 @@ def run_ocr(file_bytes: bytes, content_type: str, language: str = "auto") -> OCR
     elif content_type in {"image/jpeg", "image/png", "image/tiff"}:
         result.page_count = 1
 
-        # Try PaddleOCR on image if language is auto/hindi/marathi/english
-        # For Tamil/Telugu/Kannada specific requests or if Paddle gives low quality, use Tesseract with requested language
-        if language in ("auto", "hi", "mr", "en", "unknown"):
-            try:
-                pages, avg_conf = _run_paddle_on_image_bytes(file_bytes)
-                if pages and pages[0].get("blocks"):
-                    result.pages = pages
-                    result.confidence = round(avg_conf, 4)
-                    result.text = "\n".join(b["text"] for b in pages[0]["blocks"])
-                    result.method = "paddle"
-                    paddle_succeeded = True
-                    logger.info(
-                        "PaddleOCR image: %d chars, conf=%.2f", len(result.text), avg_conf
-                    )
-            except Exception as exc:
-                logger.warning(
-                    "PaddleOCR image failed (will try Tesseract fallback): %s", exc
+        # Try PaddleOCR on image for all supported languages
+        try:
+            pages, avg_conf = _run_paddle_on_image_bytes(file_bytes, language=language)
+            if pages and pages[0].get("blocks"):
+                result.pages = pages
+                result.confidence = round(avg_conf, 4)
+                result.text = "\n".join(b["text"] for b in pages[0]["blocks"])
+                result.method = f"paddle({language})"
+                paddle_succeeded = True
+                logger.info(
+                    "PaddleOCR image (%s): %d chars, conf=%.2f", language, len(result.text), avg_conf
                 )
-                result.warnings.append(f"PaddleOCR image failed: {exc}")
+        except Exception as exc:
+            logger.warning(
+                "PaddleOCR image failed (will try Tesseract fallback): %s", exc
+            )
+            result.warnings.append(f"PaddleOCR image failed: {exc}")
 
-        # Tesseract fallback or primary if specific Indic language specified
-        if not paddle_succeeded or not result.text.strip() or language not in ("auto", "hi", "mr", "en", "unknown"):
+        # Tesseract fallback if PaddleOCR didn't yield text
+        if not paddle_succeeded or not result.text.strip():
             try:
                 text, conf = _extract_text_image_tesseract(file_bytes, language=language)
                 if text.strip():
@@ -420,4 +454,104 @@ def run_ocr_structured(
         "error": result.error,
         "warnings": result.warnings,
         "pages": result.pages,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Recommended entry point — Script Detection → OCR Router → OCR Engine
+# ---------------------------------------------------------------------------
+
+def run_ocr_with_script_detection(
+    file_bytes: bytes,
+    content_type: str,
+    max_sample_pages: int = 2,
+) -> dict:
+    """Auto-detect script/language FIRST, then run the matching OCR engine.
+
+    This is the **recommended** public entry point for new pipeline code.
+    It implements the full recommended pipeline::
+
+        Upload Document
+              ↓
+        Document Preprocessing
+              ↓
+        Script / Language Detection  (lightweight — no full OCR model loaded)
+              ↓
+        OCR Router
+         ┌──────┬──────┬──────┬──────┐
+        Hindi  Tamil Telugu Kannada English …
+         └──────┴──────┴──────┴──────┘
+              ↓
+        Text Extraction
+              ↓
+        Land-Field Extraction → Validation → Structured Record
+
+    Args:
+        file_bytes:        Raw bytes of the uploaded document.
+        content_type:      MIME type (``"application/pdf"``, ``"image/jpeg"`` etc.)
+        max_sample_pages:  Pages to sample for script detection (default 2).
+
+    Returns:
+        dict with keys:
+
+        ``script_detection``  — Full :class:`~script_detector.ScriptDetectionResult`
+                                as a dict.  Example::
+
+                                    {
+                                      "detected_language": "Tamil",
+                                      "language_code": "ta",
+                                      "script": "Tamil",
+                                      "confidence": 0.97,
+                                      "ocr_engine": "paddle_ta",
+                                      "next_step": "tamil_ocr",
+                                      "detection_method": "tesseract_osd",
+                                      "sample_pages": [1, 2],
+                                      "elapsed_ms": 187.4,
+                                      "warnings": []
+                                    }
+
+        ``page_count``        — Total pages processed.
+        ``full_text``         — Concatenated OCR text.
+        ``avg_confidence``    — Average OCR confidence (0.0–1.0).
+        ``method``            — OCR engine + language label.
+        ``error``             — Error string or None.
+        ``warnings``          — List of warning strings.
+        ``pages``             — Per-page block list (for LayoutLMv3 etc.).
+
+    Never raises — all errors are captured and returned in the result dict.
+    """
+    from app.services.script_detector import detect_script_from_document
+
+    # ── Step 1: Lightweight script detection (no OCR model loaded yet) ────
+    detection = detect_script_from_document(
+        file_bytes,
+        content_type,
+        max_sample_pages=max_sample_pages,
+    )
+
+    logger.info(
+        "OCR Router: detected script=%s lang=%s conf=%.2f method=%s → routing to %s",
+        detection.script_name,
+        detection.language_code,
+        detection.confidence,
+        detection.detection_method,
+        detection.next_step,
+    )
+
+    # ── Step 2: Route to the correct OCR engine ───────────────────────────
+    ocr_result = run_ocr(
+        file_bytes,
+        content_type,
+        language=detection.language_code,
+    )
+
+    return {
+        "script_detection": detection.to_dict(),
+        "page_count": ocr_result.page_count,
+        "full_text": ocr_result.text,
+        "avg_confidence": ocr_result.confidence,
+        "method": ocr_result.method,
+        "error": ocr_result.error,
+        "warnings": ocr_result.warnings + detection.warnings,
+        "pages": ocr_result.pages,
     }

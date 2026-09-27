@@ -33,6 +33,26 @@ if ! docker compose version >/dev/null 2>&1; then
     exit 1
 fi
 
+if ! docker info >/dev/null 2>&1; then
+    echo "       Docker daemon is not running. Launching Docker Desktop..."
+    if [ -d "/Applications/Docker.app" ]; then
+        open -a Docker
+        echo "       Waiting for Docker daemon to initialize..."
+        WAIT_COUNT=0
+        until docker info >/dev/null 2>&1 || [ $WAIT_COUNT -eq 30 ]; do
+            sleep 2
+            WAIT_COUNT=$((WAIT_COUNT+1))
+            echo -n "."
+        done
+        echo ""
+    fi
+fi
+
+if ! docker info >/dev/null 2>&1; then
+    echo "[ERROR] Docker daemon is not running. Please start Docker Desktop and run ./start.sh again."
+    exit 1
+fi
+
 (cd "${PROJECT_ROOT}" && docker compose up -d)
 
 echo "       PostgreSQL + PostGIS + pgvector : started"

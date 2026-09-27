@@ -109,6 +109,59 @@ _DOMAIN_DICTIONARY: dict[str, str] = {
     "मालिकाचे नाव": "Owner Name",
     "दिनांक": "Date",
     "रजिस्ट्रेशन": "Registration",
+
+    # Tamil terms
+    "பட்டா": "Patta",
+    "பட்டா எண்": "Patta Number",
+    "புல எண்": "Survey Number",
+    "கிராமம்": "Village",
+    "வட்டம்": "Taluk",
+    "மாவட்டம்": "District",
+    "பரப்பளவு": "Area",
+    "உரிமையாளர்": "Owner",
+    "நஞ்சை": "Wet Land (Nanja)",
+    "புஞ்சை": "Dry Land (Punja)",
+
+    # Telugu terms
+    "పట్టా": "Patta",
+    "ఖాతా సంఖ్య": "Khata Number",
+    "సర్వే నంబర్": "Survey Number",
+    "గ్రామం": "Village",
+    "మండలం": "Mandal",
+    "జిల్లా": "District",
+    "పట్టాదారు": "Land Owner",
+    "విస్తీర్ణం": "Area",
+
+    # Kannada terms
+    "ಖಾತಾ ಸಂಖ್ಯೆ": "Khata Number",
+    "ಸರ್ವೇ ನಂಬರ್": "Survey Number",
+    "ಗ್ರಾಮ": "Village",
+    "ತಾಲೂಕು": "Taluk",
+    "ಜಿಲ್ಲೆ": "District",
+    "ಮಾಲೀಕರು": "Owner",
+    "ವಿಸ್ತೀರ್ಣ": "Area",
+
+    # Gujarati terms
+    "ખાતા નંબર": "Khata Number",
+    "સર્વે નંબર": "Survey Number",
+    "ગામ": "Village",
+    "તાલુકો": "Taluka",
+    "જિલ્લો": "District",
+    "ક્ષેત્રફળ": "Area",
+
+    # Bengali terms
+    "খতিয়ান": "Khatian",
+    "দাগ নং": "Dag Number",
+    "মৌজা": "Mouza/Village",
+    "জেলা": "District",
+    "জমির পরিমাণ": "Land Area",
+
+    # Punjabi terms
+    "ਖਸਰਾ": "Khasra",
+    "ਖੇਵਟ": "Khewat",
+    "ਖਤੌਨੀ": "Khatauni",
+    "ਪਿੰਡ": "Village",
+    "ਤਹਿਸੀਲ": "Tehsil",
 }
 
 # ---------------------------------------------------------------------------

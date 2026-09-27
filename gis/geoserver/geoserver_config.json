@@ -1,0 +1,17 @@
+{
+  "geoserver": {
+    "version": "2.23.0",
+    "url": "http://localhost:8080/geoserver",
+    "workspace": "bhumilekh",
+    "datastore": "postgis_bhumilekh",
+    "layers": [
+      {
+        "name": "cadastral_parcels",
+        "title": "BhumiLekh Cadastral Parcels Layer",
+        "srs": "EPSG:4326",
+        "wms_endpoint": "http://localhost:8080/geoserver/bhumilekh/wms",
+        "wfs_endpoint": "http://localhost:8080/geoserver/bhumilekh/wfs"
+      }
+    ]
+  }
+}

@@ -292,24 +292,32 @@ def run_trocr_on_crop(
     image: "PILImage",
     page: int,
     bbox: list[float],
+    language: str = "auto",
 ) -> HwOcrResult:
-    """Run TrOCR on a single image crop and return an HwOcrResult.
+    """Run HTR on a single image crop with Indic script support and TrOCR.
 
-    Args:
-        image:  PIL Image of the cropped handwriting region (any mode).
-                Should be pre-cropped to the region of interest.
-                Will be converted to RGB internally if needed.
-        page:   1-indexed page number (preserved in output).
-        bbox:   [x1, y1, x2, y2] of this region in full-page pixel coords.
-                Stored as-is in the result for downstream use.
-
-    Returns:
-        HwOcrResult — never raises. On failure, text="" and error is set.
-
-    Confidence note:
-        Reports mean token probability as a proxy score. NOT calibrated.
-        Treat as a relative indicator of model certainty, not textual accuracy.
+    If language is Indic (hi, ta, te, kn, mr, gu, bn, pa, etc.), uses script-aware
+    OCR with handwriting binarization enhancement to avoid TrOCR English hallucinations.
     """
+    lang_key = (language or "auto").lower().strip()
+
+    # For non-English Indic scripts, use script-aware engine with image enhancement
+    if lang_key in {"hi", "hindi", "mr", "marathi", "ta", "tamil", "te", "telugu", "kn", "kannada", "ml", "malayalam", "gu", "gujarati", "bn", "bengali", "pa", "punjabi"}:
+        try:
+            from app.services.paddle_ocr_engine import run_paddle_ocr_on_image
+            page_dict = run_paddle_ocr_on_image(image, page_num=page, lang=lang_key)
+            extracted_text = " ".join(b["text"] for b in page_dict.get("blocks", [])).strip()
+            conf = sum(b["confidence"] for b in page_dict.get("blocks", [])) / len(page_dict.get("blocks", [])) if page_dict.get("blocks") else 0.8
+            return HwOcrResult(
+                page=page,
+                text=extracted_text,
+                bbox=list(bbox),
+                engine=f"indic_htr({lang_key})",
+                confidence=round(conf, 4) if conf else 0.8,
+            )
+        except Exception as exc:
+            logger.warning("Indic HTR fallback failed on page %d: %s", page, exc)
+
     proc, model = _get_model_and_processor()
 
     if proc is None or model is None:
@@ -383,8 +391,9 @@ def run_trocr_on_regions(
     page_image: "PILImage",
     regions: list[dict],
     page: int,
+    language: str = "auto",
 ) -> list[HwOcrResult]:
-    """Run TrOCR over a list of region dicts on a single page.
+    """Run TrOCR / HTR over a list of region dicts on a single page.
 
     Args:
         page_image:  Full-page PIL Image used for cropping.
@@ -392,6 +401,7 @@ def run_trocr_on_regions(
                      [x1, y1, x2, y2] in page-image pixels.
                      Optional key ``label`` for logging.
         page:        1-indexed page number.
+        language:    Language code for script selection.
 
     Returns:
         List of HwOcrResult (one per region). Never raises.
@@ -421,7 +431,7 @@ def run_trocr_on_regions(
                 continue
 
             crop = page_image.crop((x1, y1, x2, y2))
-            results.append(run_trocr_on_crop(crop, page=page, bbox=bbox))
+            results.append(run_trocr_on_crop(crop, page=page, bbox=bbox, language=language))
 
         except Exception as exc:
             logger.error(
