@@ -15,8 +15,9 @@ Endpoints:
 """
 import uuid
 from datetime import datetime
+from urllib.parse import quote
 
-from typing import Optional
+from typing import Optional, Any
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
@@ -529,13 +530,13 @@ def view_document(
             detail="Document file not found in storage",
         )
 
+    ascii_filename = document.original_filename.encode("ascii", "ignore").decode("ascii").strip() or "document.pdf"
+    encoded_filename = quote(document.original_filename)
     return StreamingResponse(
         response.stream(32 * 1024),
         media_type=document.content_type,
         headers={
-            "Content-Disposition": (
-                f'inline; filename="{document.original_filename}"'
-            )
+            "Content-Disposition": f'inline; filename="{ascii_filename}"; filename*=UTF-8\'\'{encoded_filename}'
         },
     )
 
@@ -559,6 +560,7 @@ def reprocess_document(
     doc.detected_language = target_lang
     doc.status = "PROCESSING"
     doc.error_message = None
+    doc.processing_metadata = None
     db.commit()
 
     # Clear previous results
@@ -582,6 +584,80 @@ def reprocess_document(
         "language": target_lang,
         "message": f"Reprocessing document with OCR language '{target_lang}'",
     }
+
+
+# ---------------------------------------------------------------------------
+# Intelligent Language Identification and OCR Model Selection
+# ---------------------------------------------------------------------------
+
+@router.post("/analyze-and-route")
+async def analyze_and_route_uploaded_file(
+    file: UploadFile = File(...),
+    language_hint: Optional[str] = Form("auto"),
+    enable_handwriting: Optional[bool] = Form(True),
+):
+    """Analyze an uploaded document, detect script/language, select the best OCR model(s),
+
+    and return structured extraction results.
+    """
+    from app.services.intelligent_ocr_router import process_document_intelligently
+
+    file_bytes = await file.read()
+    content_type = file.content_type or "application/pdf"
+
+    result = process_document_intelligently(
+        file_bytes=file_bytes,
+        content_type=content_type,
+        language_hint=language_hint or "auto",
+        enable_handwriting=bool(enable_handwriting),
+    )
+    return result.to_dict()
+
+
+@router.post("/{document_id}/analyze-and-route")
+def analyze_and_route_document(
+    document_id: uuid.UUID,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+):
+    """Analyze an existing stored document, detect script/language, select the optimal OCR model(s),
+
+    and update document metadata.
+    """
+    from app.services.intelligent_ocr_router import process_document_intelligently
+
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    try:
+        response = get_file(doc.storage_key)
+        file_bytes = response.read()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Document file not found in storage: {exc}",
+        )
+
+    language_hint = payload.get("language_hint", "auto")
+    enable_handwriting = payload.get("enable_handwriting", True)
+
+    result = process_document_intelligently(
+        file_bytes=file_bytes,
+        content_type=doc.content_type,
+        language_hint=language_hint,
+        enable_handwriting=enable_handwriting,
+    )
+
+    # Persist the primary detected language back to Document model
+    if result.detected_languages:
+        doc.detected_language = result.detected_languages[0].code
+        doc.ocr_confidence = result.overall_confidence
+        doc.page_count = result.page_count
+        doc.updated_at = datetime.utcnow()
+        db.commit()
+
+    return result.to_dict()
 
 
 # ---------------------------------------------------------------------------
@@ -785,4 +861,47 @@ def get_learning_history(
             for s in snapshots
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Validation Engine Endpoints
+# ---------------------------------------------------------------------------
+
+@router.post("/{document_id}/validate")
+def validate_document_rules(
+    document_id: uuid.UUID,
+    db: Session = Depends(get_db),
+):
+    """Run the comprehensive Validation Engine against a document's extracted fields."""
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    results = db.query(DocumentResult).filter(DocumentResult.document_id == document_id).all()
+    record: dict[str, Any] = {
+        "state": getattr(doc, "state", "ALL") or "ALL",
+        "district": getattr(doc, "district", None),
+    }
+
+    for r in results:
+        key = r.canonical_key or r.field_name
+        if key and r.field_value:
+            record[key.lower()] = r.field_value
+            record[key] = r.field_value
+
+    from app.services.validation_service import validate_record_with_engine
+    report = validate_record_with_engine(record)
+    return {
+        "document_id": str(document_id),
+        "validation_report": report,
+    }
+
+
+@router.post("/validate-record")
+def validate_arbitrary_record(
+    record: dict[str, Any] = Body(...),
+):
+    """Validate an arbitrary land record against business & state-specific validation rules."""
+    from app.services.validation_service import validate_record_with_engine
+    return validate_record_with_engine(record)
 

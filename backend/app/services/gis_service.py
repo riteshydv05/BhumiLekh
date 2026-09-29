@@ -218,37 +218,61 @@ def get_document_parcel(document_id: str) -> dict | None:
         db.close()
 
 
-def extract_cadastral_polygons_from_map(image_bytes: bytes) -> dict:
+def extract_cadastral_polygons_from_map(image_bytes: bytes, extract_labels: bool = True) -> dict:
     """OpenCV Contour Extraction & Vectorization for Cadastral Maps (FMB / Tippan / Village Maps).
 
-    Detects parcel boundary lines, calculates polygon bounding boxes, and generates
-    GeoJSON geometries for GIS overlay.
+    Detects parcel boundary lines, calculates polygon bounding boxes, extracts survey number
+    labels via OCR if requested, and generates GeoJSON geometries for GIS overlay.
     """
     try:
         import cv2
         import numpy as np
         from io import BytesIO
         from PIL import Image
+        import re
 
         pil_img = Image.open(BytesIO(image_bytes)).convert("L")
         img_np = np.array(pil_img)
 
-        # Preprocessing: Gaussian Blur + Adaptive Thresholding to extract lines
+        # Preprocessing: Gaussian Blur + Adaptive Thresholding to extract boundary lines
         blurred = cv2.GaussianBlur(img_np, (5, 5), 0)
         thresh = cv2.adaptiveThreshold(
             blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2
         )
 
         # Find closed contours (land parcel polygons)
-        contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        # In RETR_CCOMP, hierarchy[0][i][3] != -1 represents internal holes enclosed by boundaries
+        contours, hierarchy = cv2.findContours(thresh, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
 
         features = []
         img_h, img_w = img_np.shape[:2]
 
-        for idx, cnt in enumerate(contours):
+        # Filter candidate contours: prefer internal holes enclosed by boundary lines
+        candidate_contours = []
+        if hierarchy is not None and len(hierarchy[0]) > 0:
+            for i, cnt in enumerate(contours):
+                # If it's a hole (child contour enclosed by lines)
+                if hierarchy[0][i][3] != -1:
+                    candidate_contours.append(cnt)
+
+        # Fallback if no internal holes detected (e.g. inverted or simple polygon sketches)
+        if not candidate_contours:
+            candidate_contours = contours
+
+        # Optional tesseract OCR for parcel text/labels
+        tesseract_available = False
+        if extract_labels:
+            try:
+                import pytesseract
+                tesseract_available = True
+            except ImportError:
+                tesseract_available = False
+
+        for idx, cnt in enumerate(candidate_contours):
             area = cv2.contourArea(cnt)
             # Filter out tiny noise and full-page bounding frame
-            if 500 < area < (img_h * img_w * 0.9):
+            if 400 < area < (img_h * img_w * 0.85):
+
                 epsilon = 0.02 * cv2.arcLength(cnt, True)
                 approx = cv2.approxPolyDP(cnt, epsilon, True)
 
@@ -257,6 +281,29 @@ def extract_cadastral_polygons_from_map(image_bytes: bytes) -> dict:
                         round(float(img_h - pt[0][1]) / img_h * 0.01 + 20.0, 6)] for pt in approx]
                 if pts:
                     pts.append(pts[0])  # Close ring
+
+                # Bounding box & centroid
+                bx, by, bw, bh = cv2.boundingRect(cnt)
+                centroid_x = int(bx + bw / 2)
+                centroid_y = int(by + bh / 2)
+
+                survey_label = None
+                if tesseract_available and bw > 30 and bh > 20:
+                    try:
+                        crop = img_np[by:by+bh, bx:bx+bw]
+                        # OCR on crop with sparse text mode
+                        txt = pytesseract.image_to_string(
+                            crop,
+                            config="--psm 11"
+                        ).strip()
+
+                        match = re.search(r"\b\d+([/-][0-9A-Za-z]+)?\b", txt)
+                        if match:
+                            survey_label = match.group(0)
+                        elif txt:
+                            survey_label = txt.split()[0]
+                    except Exception as ocr_err:
+                        logger.debug("Crop OCR failed for parcel %d: %s", idx, ocr_err)
 
                 features.append({
                     "type": "Feature",
@@ -267,10 +314,14 @@ def extract_cadastral_polygons_from_map(image_bytes: bytes) -> dict:
                     },
                     "properties": {
                         "parcel_id": f"P-{idx+1}",
+                        "survey_number": survey_label or f"P-{idx+1}",
                         "extracted_area_px": float(area),
                         "vertex_count": len(approx),
+                        "bounding_box": [int(bx), int(by), int(bw), int(bh)],
+                        "centroid": [centroid_x, centroid_y],
                     }
                 })
+
 
         return {
             "type": "FeatureCollection",
@@ -285,4 +336,5 @@ def extract_cadastral_polygons_from_map(image_bytes: bytes) -> dict:
     except Exception as exc:
         logger.error("OpenCV cadastral vectorization failed: %s", exc, exc_info=True)
         return {"type": "FeatureCollection", "features": [], "metadata": {"error": str(exc)}}
+
 

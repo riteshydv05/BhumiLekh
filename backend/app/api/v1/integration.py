@@ -7,11 +7,13 @@ Exposes endpoints for:
 - Document-to-parcel linking
 - Integration status
 """
+import os
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile
 from sqlalchemy.orm import Session
+
 
 from app.db.session import get_db
 
@@ -175,3 +177,48 @@ def document_parcel(
         "document_id": str(document_id),
         "parcel": feature,
     }
+
+
+# ---------------------------------------------------------------------------
+# Cadastral Map Vectorization & GeoJSON
+# ---------------------------------------------------------------------------
+
+@router.post("/gis/vectorize-map")
+async def gis_vectorize_map(
+    file: UploadFile = File(...),
+    extract_labels: bool = Query(True, description="Run OCR on parcel bounding crops to detect survey numbers"),
+):
+    """Vectorize a scanned cadastral map, FMB, or Tippan sketch.
+
+    Extracts closed parcel boundary contours using adaptive thresholding,
+    approximates polygon coordinates, recognizes survey numbers via OCR,
+    and returns a GeoJSON FeatureCollection.
+    """
+    from app.services.gis_service import extract_cadastral_polygons_from_map
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    geojson_result = extract_cadastral_polygons_from_map(content, extract_labels=extract_labels)
+    return geojson_result
+
+
+@router.get("/gis/sample-geojson")
+def gis_sample_geojson():
+    """Return sample cadastral parcels GeoJSON dataset for testing and GIS preview."""
+    import json
+    from pathlib import Path
+
+    sample_path = Path(__file__).resolve().parents[4] / "gis" / "sample_shapefiles" / "sample_parcels.geojson"
+    if sample_path.exists():
+        with open(sample_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    # Fallback default feature collection
+    return {
+        "type": "FeatureCollection",
+        "features": [],
+        "metadata": {"note": "No sample_parcels.geojson found on disk"}
+    }
+

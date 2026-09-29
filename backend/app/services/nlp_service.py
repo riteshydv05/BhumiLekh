@@ -413,22 +413,63 @@ _LAND_RECORD_PATTERNS: dict[str, list[tuple[re.Pattern[str], float]]] = {
         (re.compile(r"(?:ಜಿಲ್ಲೆ)\s*[:\-]?\s*([\u0C80-\u0CFF\s]{2,30})", re.IGNORECASE), 0.82),
     ],
     "gu": [
-        # Gujarati Survey / Khata (સર્વે નંબર / ખાતા નંબર / ૭/૧૨)
+        # Gujarati Survey / Khata / Block (સર્વે નંબર / ખાતા નંબર / બ્લોક નંબર)
         (re.compile(r"(?:સર્વે\s*નંબર|ખાતા\s*નંબર|બ્લોક\s*નંબર)\s*[:\-]?\s*([0-9૦-૯A-Za-z\/\-\.]+)", re.IGNORECASE), 0.90),
         # Owner Name (ખાતેદારનું નામ)
         (re.compile(r"(?:ખાતેદારનું\s*નામ|જમીન\s*માલિક|નામ)\s*[:\-]?\s*([\u0A80-\u0AFF\s\.]{2,50})", re.IGNORECASE), 0.80),
+        # Village / Taluka / District (ગામ / તાલુકો / જિલ્લો)
+        (re.compile(r"(?:ગામ)\s*[:\-]?\s*([\u0A80-\u0AFF\s]{2,30})", re.IGNORECASE), 0.82),
+        (re.compile(r"(?:તાલુકો)\s*[:\-]?\s*([\u0A80-\u0AFF\s]{2,30})", re.IGNORECASE), 0.82),
+        (re.compile(r"(?:જિલ્લો)\s*[:\-]?\s*([\u0A80-\u0AFF\s]{2,30})", re.IGNORECASE), 0.82),
+        # Area (ક્ષેત્રફળ / આરે)
+        (re.compile(r"(?:ક્ષેત્રફળ|વિસ્તાર)\s*[:\-]?\s*([0-9૦-૯\.\s]+(?:\s*(?:હેક્ટર|હે|વીઘા|ચો\.મી\.))?)", re.IGNORECASE), 0.85),
     ],
     "bn": [
         # Bengali Khatian / Dag Number (খতিয়ান নং / দাগ নং)
-        (re.compile(r"(?:খতিয়ান\s*নং|দাগ\s*নং|মৌজা)\s*[:\-]?\s*([0-9০-৯A-Za-z\/\-\.]+)", re.IGNORECASE), 0.90),
-        # Owner Name (মালিকের নাম)
+        (re.compile(r"(?:খতিয়ান\s*নং|খতিয়ান|দাগ\s*নং|দাগ)\s*[:\-]?\s*([0-9০-৯A-Za-z\/\-\.]+)", re.IGNORECASE), 0.90),
+        # Owner Name (মালিকের নাম / রায়তের নাম)
         (re.compile(r"(?:মালিকের\s*নাম|রায়তের\s*নাম|নাম)\s*[:\-]?\s*([\u0980-\u09FF\s\.]{2,50})", re.IGNORECASE), 0.80),
+        # Village / Mouza / District (মৌজা / থানা / জেলা)
+        (re.compile(r"(?:মৌজা|গ্রাম)\s*[:\-]?\s*([\u0980-\u09FF\s]{2,30})", re.IGNORECASE), 0.82),
+        (re.compile(r"(?:থানা|মহকুমা)\s*[:\-]?\s*([\u0980-\u09FF\s]{2,30})", re.IGNORECASE), 0.82),
+        (re.compile(r"(?:জেলা)\s*[:\-]?\s*([\u0980-\u09FF\s]{2,30})", re.IGNORECASE), 0.82),
+        # Area (জমির পরিমাণ / শতক)
+        (re.compile(r"(?:জমির\s*পরিমাণ|কালি)\s*[:\-]?\s*([0-9০-৯\.\s]+(?:\s*(?:একর|শতক|হেক্টর|বিঘা))?)", re.IGNORECASE), 0.85),
     ],
     "pa": [
-        # Punjabi Khasra / Khatauni (ਖਸਰਾ ਨੰਬਰ / ਖਤੌਨੀ)
+        # Punjabi Khasra / Khatauni / Khewat (ਖਸਰਾ ਨੰਬਰ / ਖੇਵਟ ਨੰਬਰ / ਖਤੌਨੀ)
         (re.compile(r"(?:ਖਸਰਾ\s*ਨੰਬਰ|ਖੇਵਟ\s*ਨੰਬਰ|ਖਤੌਨੀ)\s*[:\-]?\s*([0-9੦-੯A-Za-z\/\-\.]+)", re.IGNORECASE), 0.90),
         # Owner Name (ਮਾਲਕ ਦਾ ਨਾਂ)
         (re.compile(r"(?:ਮਾਲਕ\s*ਦਾ\s*ਨਾਂ|ਨਾਮ)\s*[:\-]?\s*([\u0A00-\u0A7F\s\.]{2,50})", re.IGNORECASE), 0.80),
+        # Village / Tehsil / District (ਪਿੰਡ / ਤਹਿਸੀਲ / ਜ਼ਿਲ੍ਹਾ)
+        (re.compile(r"(?:ਪਿੰਡ)\s*[:\-]?\s*([\u0A00-\u0A7F\s]{2,30})", re.IGNORECASE), 0.82),
+        (re.compile(r"(?:ਤਹਿਸੀਲ)\s*[:\-]?\s*([\u0A00-\u0A7F\s]{2,30})", re.IGNORECASE), 0.82),
+        (re.compile(r"(?:ਜ਼ਿਲ੍ਹਾ)\s*[:\-]?\s*([\u0A00-\u0A7F\s]{2,30})", re.IGNORECASE), 0.82),
+        # Area (ਰਕਬਾ)
+        (re.compile(r"(?:ਰਕਬਾ)\s*[:\-]?\s*([0-9੦-੯\.\s]+(?:\s*(?:ਕਨਾਲ|ਮਰਲੇ|ਏਕੜ|ਹੈਕਟੇਅਰ))?)", re.IGNORECASE), 0.85),
+    ],
+    "ml": [
+        # Malayalam Survey Number (സർവേ നമ്പർ)
+        (re.compile(r"(?:സർവേ\s*നമ്പർ|സർവേ\s*നം\.?)\s*[:\-]?\s*([0-9A-Za-z\/\-\.]+)", re.IGNORECASE), 0.90),
+        # Owner Name (ഉടമസ്ഥന്റെ പേര് / പേര്)
+        (re.compile(r"(?:ഉടമസ്ഥന്റെ\s*പേര്|ഉടമസ്ഥൻ|പേര്)\s*[:\-]?\s*([\u0D00-\u0D7F\s\.]{2,50})", re.IGNORECASE), 0.80),
+        # Village / Taluk / District (വില്ലേജ് / താലൂക്ക് / ജില്ല)
+        (re.compile(r"(?:വില്ലേജ്)\s*[:\-]?\s*([\u0D00-\u0D7F\s]{2,30})", re.IGNORECASE), 0.82),
+        (re.compile(r"(?:താലൂക്ക്)\s*[:\-]?\s*([\u0D00-\u0D7F\s]{2,30})", re.IGNORECASE), 0.82),
+        (re.compile(r"(?:ജില്ല)\s*[:\-]?\s*([\u0D00-\u0D7F\s]{2,30})", re.IGNORECASE), 0.82),
+        # Area (വിസ്തീർണം)
+        (re.compile(r"(?:വിസ്തീർണം|വിസ്തൃതി)\s*[:\-]?\s*([0-9\.\s]+(?:\s*(?:ഹെക്ടർ|ഏക്കർ|സെന്റ്))?)", re.IGNORECASE), 0.85),
+    ],
+    "or": [
+        # Odia Khata / Plot (ଖାତା ନଂ / ପ୍ଲଟ ନଂ)
+        (re.compile(r"(?:ଖାତା\s*ନଂ|ଖାତା\s*ନମ୍ବର|ଜମି\s*ଖାତା)\s*[:\-]?\s*([0-9୦-୯A-Za-z\/\-\.]+)", re.IGNORECASE), 0.90),
+        (re.compile(r"(?:ପ୍ଲଟ\s*ନଂ|ପ୍ଲଟ\s*ନମ୍ବର)\s*[:\-]?\s*([0-9୦-୯A-Za-z\/\-\.]+)", re.IGNORECASE), 0.90),
+        # Owner Name (ଜମି ମାଲିକ / ରୟତ ନାମ)
+        (re.compile(r"(?:ମାଲିକଙ୍କ\s*ନାମ|ଜମି\s*ମାଲିକ|ରୟତ\s*ନାମ|ନାମ)\s*[:\-]?\s*([\u0B00-\u0B7F\s\.]{2,50})", re.IGNORECASE), 0.80),
+        # Village / Tehsil / District (ମୌଜା / ତହସିଲ / ଜିଲ୍ଲା)
+        (re.compile(r"(?:ମୌଜା)\s*[:\-]?\s*([\u0B00-\u0B7F\s]{2,30})", re.IGNORECASE), 0.82),
+        (re.compile(r"(?:ତହସିଲ)\s*[:\-]?\s*([\u0B00-\u0B7F\s]{2,30})", re.IGNORECASE), 0.82),
+        (re.compile(r"(?:ଜିଲ୍ଲା)\s*[:\-]?\s*([\u0B00-\u0B7F\s]{2,30})", re.IGNORECASE), 0.82),
     ],
     "mr": [
         # Survey / Gat / Bhumapan Number (7/12 & 8A)
@@ -555,7 +596,14 @@ class _NERModelLoader:
 # ---------------------------------------------------------------------------
 
 def _get_language(text: str) -> str:
-    """Detect the primary language of text. Falls back to 'en'."""
+    """Detect the primary language of text. Uses Unicode script detection first, then language_service."""
+    try:
+        from app.services.paddle_ocr_engine import detect_script
+        script = detect_script(text)
+        if script and script != "en":
+            return script
+    except Exception:
+        pass
     try:
         from app.services.language_service import detect_language
         return detect_language(text)
@@ -594,6 +642,23 @@ def _pattern_to_entity(pattern: re.Pattern[str]) -> str | None:
         (r"भूमिस्वामी", "OWNER_NAME"),
         (r"owner", "OWNER_NAME"),
         (r"malik", "OWNER_NAME"),
+        (r"vendee", "OWNER_NAME"),
+        (r"purchaser", "OWNER_NAME"),
+        (r"উরিமையாளர்", "OWNER_NAME"),
+        (r"உரிமையாளர்", "OWNER_NAME"),
+        (r"பட்டாதாரர்", "OWNER_NAME"),
+        (r"పట్టాదారు", "OWNER_NAME"),
+        (r"భూమిహక్కుదారు", "OWNER_NAME"),
+        (r"ಮಾಲೀಕರ", "OWNER_NAME"),
+        (r"ಖಾತೆದಾರರ", "OWNER_NAME"),
+        (r"ખાતેદારનું", "OWNER_NAME"),
+        (r"જમીન\s*માલિક", "OWNER_NAME"),
+        (r"মালিকের", "OWNER_NAME"),
+        (r"রায়তের", "OWNER_NAME"),
+        (r"ਮਾਲਕ", "OWNER_NAME"),
+        (r"ഉടമസ്ഥ", "OWNER_NAME"),
+        (r"ମାଲିକ", "OWNER_NAME"),
+        (r"ରୟତ", "OWNER_NAME"),
         (r"वडिलांचे", "FATHER_NAME"),
         (r"पतीचे", "FATHER_NAME"),
         (r"पिता", "FATHER_NAME"),
@@ -610,6 +675,14 @@ def _pattern_to_entity(pattern: re.Pattern[str]) -> str | None:
         (r"क्षेत्रफळ", "AREA"),
         (r"क्षेत्र", "AREA"),
         (r"आकारणी", "AREA"),
+        (r"பரப்பளவு", "AREA"),
+        (r"விஸ்தீரணம்", "AREA"),
+        (r"విస్తీర్ణం", "AREA"),
+        (r"ವಿಸ್ತೀರ್ಣ", "AREA"),
+        (r"ક્ષેત્રફળ", "AREA"),
+        (r"জমির পরিমাণ", "AREA"),
+        (r"ਰਕਬਾ", "AREA"),
+        (r"വിസ്തീർണം", "AREA"),
         (r"survey", "SURVEY_NUMBER"),
         (r"सर्वे", "SURVEY_NUMBER"),
         (r"सर्व्हे", "SURVEY_NUMBER"),
@@ -617,9 +690,28 @@ def _pattern_to_entity(pattern: re.Pattern[str]) -> str | None:
         (r"गट", "SURVEY_NUMBER"),
         (r"khasra", "KHASRA_NUMBER"),
         (r"खसरा", "KHASRA_NUMBER"),
+        (r"ਖਸਰਾ", "KHASRA_NUMBER"),
+        (r"பட்டா", "SURVEY_NUMBER"),
+        (r"புல", "SURVEY_NUMBER"),
+        (r"సర్వే", "SURVEY_NUMBER"),
+        (r"ಅಡంగల్", "SURVEY_NUMBER"),
+        (r"ಸರ್ವೇ", "SURVEY_NUMBER"),
+        (r"ಹಿಸ್ಸಾ", "SURVEY_NUMBER"),
+        (r"સર્વે", "SURVEY_NUMBER"),
+        (r"બ્લોક", "SURVEY_NUMBER"),
+        (r"দাগ", "SURVEY_NUMBER"),
+        (r"സർവേ", "SURVEY_NUMBER"),
+        (r"ପ୍ଲଟ", "PLOT_NUMBER"),
         (r"khata", "KHATA_NUMBER"),
         (r"खाता", "KHATA_NUMBER"),
         (r"खाते", "KHATA_NUMBER"),
+        (r"ఖాతా", "KHATA_NUMBER"),
+        (r"ಖಾತಾ", "KHATA_NUMBER"),
+        (r"ખાતા", "KHATA_NUMBER"),
+        (r"খতিয়ান", "KHATA_NUMBER"),
+        (r"ਖੇਵਟ", "KHATA_NUMBER"),
+        (r"ਖਤੌਨੀ", "KHATA_NUMBER"),
+        (r"ଖାତା", "KHATA_NUMBER"),
         (r"plot", "PLOT_NUMBER"),
         (r"village", "VILLAGE"),
         (r"gaon", "VILLAGE"),
@@ -627,14 +719,38 @@ def _pattern_to_entity(pattern: re.Pattern[str]) -> str | None:
         (r"गाँव", "VILLAGE"),
         (r"ग्राम", "VILLAGE"),
         (r"मौजे", "VILLAGE"),
+        (r"கிராமம்", "VILLAGE"),
+        (r"ஊர்", "VILLAGE"),
+        (r"గ్రామం", "VILLAGE"),
+        (r"ಗ್ರಾಮ", "VILLAGE"),
+        (r"ગામ", "VILLAGE"),
+        (r"মৌজা", "VILLAGE"),
+        (r"ਪਿੰਡ", "VILLAGE"),
+        (r"വില്ലേജ്", "VILLAGE"),
         (r"tehsil", "TEHSIL"),
         (r"taluka", "TEHSIL"),
         (r"तहसील", "TEHSIL"),
         (r"तालुका", "TEHSIL"),
+        (r"வட்டம்", "TEHSIL"),
+        (r"தாலுகா", "TEHSIL"),
+        (r"మండలం", "TEHSIL"),
+        (r"ತಾಲೂಕು", "TEHSIL"),
+        (r"તાલુકો", "TEHSIL"),
+        (r"ਤਹਿਸੀਲ", "TEHSIL"),
+        (r"താലൂക്ക്", "TEHSIL"),
+        (r"ତହସିଲ", "TEHSIL"),
         (r"district", "DISTRICT"),
         (r"zilla", "DISTRICT"),
         (r"जिला", "DISTRICT"),
         (r"जिल्हा", "DISTRICT"),
+        (r"மாவட்டம்", "DISTRICT"),
+        (r"జిల్లా", "DISTRICT"),
+        (r"ಜಿಲ್ಲೆ", "DISTRICT"),
+        (r"જિલ્લો", "DISTRICT"),
+        (r"জেলা", "DISTRICT"),
+        (r"ਜ਼ਿਲ੍ਹਾ", "DISTRICT"),
+        (r"ജില്ല", "DISTRICT"),
+        (r"ଜିଲ୍ଲା", "DISTRICT"),
         (r"registration\s*no", "REGISTRATION_NUMBER"),
         (r"document\s*no", "REGISTRATION_NUMBER"),
         (r"deed\s*no", "REGISTRATION_NUMBER"),
@@ -642,6 +758,12 @@ def _pattern_to_entity(pattern: re.Pattern[str]) -> str | None:
         (r"दस्त", "REGISTRATION_NUMBER"),
         (r"mutation", "MUTATION_NUMBER"),
         (r"फेरफार", "MUTATION_NUMBER"),
+        (r"பெயர்", "OWNER_NAME"),
+        (r"പേര്", "OWNER_NAME"),
+        (r"नाव", "OWNER_NAME"),
+        (r"ନାମ", "OWNER_NAME"),
+        (r"ਨਾਮ", "OWNER_NAME"),
+        (r"નામ", "OWNER_NAME"),
     ]
 
     for keyword, entity_type in keywords:
@@ -788,7 +910,13 @@ def extract_entities(
     full_text = "\n".join(
         text for _, parts, _, _ in all_text for text, _ in parts
     )
-    language = _get_language(full_text)
+    if not language or language in ("auto", "unknown"):
+        language = _get_language(full_text)
+    elif language == "en":
+        # Check if text is actually in an Indic script
+        detected = _get_language(full_text)
+        if detected and detected != "en":
+            language = detected
 
     # Extract entities using rule-based approach
     all_entities: list[LandRecordEntity] = []

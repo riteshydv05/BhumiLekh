@@ -42,6 +42,15 @@ from app.services.anomaly_service import (
     generate_synthetic_training_data,
 )
 
+from app.services.intelligent_ocr_router import (
+    DetectedLanguage,
+    IntelligentOCRResult,
+    SelectedOcrModel,
+    identify_language_and_scripts,
+    process_document_intelligently,
+    select_ocr_models,
+)
+
 __all__ = [
     "OcrBlock",
     "OcrDocument",
@@ -53,6 +62,12 @@ __all__ = [
     "ScriptDetectionResult",
     "detect_script_from_document",
     "detect_script_from_image",
+    "DetectedLanguage",
+    "IntelligentOCRResult",
+    "SelectedOcrModel",
+    "identify_language_and_scripts",
+    "process_document_intelligently",
+    "select_ocr_models",
     "LayoutBlock",
     "LayoutDocument",
     "LayoutInferenceResult",

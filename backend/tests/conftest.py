@@ -32,10 +32,12 @@ def create_test_tables():
     always reflected in the test database.
     """
     import app.models  # noqa: F401 — ensure all models are registered
-    Base.metadata.drop_all(bind=test_engine)
-    Base.metadata.create_all(bind=test_engine)
+    # Exclude land_records_reference from SQLite tests if spatialite is not installed
+    tables = [t for t in Base.metadata.sorted_tables if t.name != "land_records_reference"]
+    Base.metadata.drop_all(bind=test_engine, tables=tables)
+    Base.metadata.create_all(bind=test_engine, tables=tables)
     yield
-    Base.metadata.drop_all(bind=test_engine)
+    Base.metadata.drop_all(bind=test_engine, tables=tables)
 
 
 @pytest.fixture

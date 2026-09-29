@@ -1,0 +1,149 @@
+[
+  {
+    "id": "REC-MH-712-001",
+    "state": "Maharashtra",
+    "document_type": "7/12 (Satbara)",
+    "language": "mr",
+    "script": "Devanagari",
+    "entities": {
+      "village": "शिवाजीनगर",
+      "tehsil": "हवेली",
+      "district": "पुणे",
+      "survey_number": "245/1A",
+      "khata_number": "45",
+      "owner_name": "रमेश कुमार शर्मा",
+      "area": 1.45,
+      "area_unit": "हेक्टर",
+      "land_type": "जिरायत"
+    },
+    "text": "महाराष्ट्र शासन - महसूल विभाग\nगाव नमुना ७/१२ (अधिकार अभिलेख पत्रक)\nगाव: शिवाजीनगर, तालुका: हवेली, जिल्हा: पुणे\nभूमापन क्रमांक / सर्व्हे क्र.: 245/1A\nखाते क्रमांक: 45\nभोगवटादाराचे नाव: रमेश कुमार शर्मा\nएकूण क्षेत्र: 1.45 हेक्टर\nआकारणी: 4.50 रु."
+  },
+  {
+    "id": "REC-UP-KHATAUNI-002",
+    "state": "Uttar Pradesh",
+    "document_type": "खतौनी (Khatauni)",
+    "language": "hi",
+    "script": "Devanagari",
+    "entities": {
+      "village": "बख्शी का तालाब",
+      "tehsil": "बख्शी का तालाब",
+      "district": "लखनऊ",
+      "khasra_number": "142",
+      "khata_number": "88",
+      "owner_name": "राम प्रसाद वर्मा",
+      "area": 0.854,
+      "area_unit": "हेक्टेयर",
+      "land_type": "कृषि"
+    },
+    "text": "उत्तर प्रदेश भू-अभिलेख खतौनी (अधिकार अभिलेख)\nग्राम: बख्शी का तालाब, परगना व तहसील: बख्शी का तालाब, जनपद: लखनऊ\nखाता संख्या: 88, फसली वर्ष: 1428-1433\nखसरा संख्या: 142\nखातेदार का नाम: राम प्रसाद वर्मा\nपिता का नाम: सुंदर लाल वर्मा\nक्षेत्रफल: 0.854 हेक्टेयर"
+  },
+  {
+    "id": "REC-TN-PATTA-003",
+    "state": "Tamil Nadu",
+    "document_type": "பட்டா / சிட்டா (Patta Chitta)",
+    "language": "ta",
+    "script": "Tamil",
+    "entities": {
+      "village": "மேலூர்",
+      "tehsil": "மேலூர்",
+      "district": "மதுரை",
+      "survey_number": "88/2A",
+      "patta_number": "450",
+      "owner_name": "முத்துசாமி கவுண்டர்",
+      "area": 1.12,
+      "area_unit": "ஹெக்டேர்"
+    },
+    "text": "தமிழ்நாடு அரசு - வருவாய்த்துறை\nபட்டா / சிட்டா சான்று\nமாவட்டம்: மதுரை, வட்டம்: மேலூர், கிராமம்: மேலூர்\nபட்டா எண்: 450\nஉரிமையாளர் பெயர்: முத்துசாமி கவுண்டர்\nபுல எண் / உட்பிரிவு: 88/2A\nவிஸ்தீரணம்: 1.12 ஹெக்டேர்"
+  },
+  {
+    "id": "REC-KA-RTC-004",
+    "state": "Karnataka",
+    "document_type": "ಭೂಮಿ RTC / ಪಹಣಿ",
+    "language": "kn",
+    "script": "Kannada",
+    "entities": {
+      "village": "ದೇವನಹಳ್ಳಿ",
+      "tehsil": "ದೇವನಹಳ್ಳಿ",
+      "district": "ಬೆಂಗಳೂರು ಗ್ರಾಮಾಂತರ",
+      "survey_number": "72/1",
+      "hissa_number": "1",
+      "owner_name": "ನಾರಾಯಣ ಸ್ವಾಮಿ",
+      "area": 2.34,
+      "area_unit": "ಎಕರೆ"
+    },
+    "text": "ಕರ್ನಾಟಕ ಸರ್ಕಾರ - ಕಂದಾಯ ಇಲಾಖೆ\nಭೂಮಿ ಆರ್.ಟಿ.ಸಿ (ಪಹಣಿ)\nಜಿಲ್ಲೆ: ಬೆಂಗಳೂರು ಗ್ರಾಮಾಂತರ, ತಾಲೂಕು: ದೇವನಹಳ್ಳಿ, ಗ್ರಾಮ: ದೇವನಹಳ್ಳಿ\nಸರ್ವೆ ನಂ: 72/1, ಹಿಸ್ಸಾ ನಂ: 1\nಖಾತೆದಾರರ ಹೆಸರು: ನಾರಾಯಣ ಸ್ವಾಮಿ\nವಿಸ್ತೀರ್ಣ: 2.34 ಎಕರೆ"
+  },
+  {
+    "id": "REC-TS-ADANGAL-005",
+    "state": "Telangana",
+    "document_type": "పహాణీ / అడంగల్ (Adangal)",
+    "language": "te",
+    "script": "Telugu",
+    "entities": {
+      "village": "షాద్‌నగర్",
+      "tehsil": "షాద్‌నగర్",
+      "district": "రంగారెడ్డి",
+      "survey_number": "104/A",
+      "khata_number": "512",
+      "owner_name": "వెంకటేశ్వర్లు రెడ్డి",
+      "area": 3.25,
+      "area_unit": "ఎకరాలు"
+    },
+    "text": "తెలంగాణ ప్రభుత్వం - రెవెన్యూ శాఖ\nపహాణీ / రికార్డ్ ఆఫ్ రైట్స్ (ROR)\nజిల్లా: రంగారెడ్డి, మండలం: షాద్‌నగర్, గ్రామం: షాద్‌నగర్\nసర్వే నంబర్: 104/A, ఖాతా నంబరు: 512\nపట్టాదారు పేరు: వెంకటేశ్వర్లు రెడ్డి\nవిస్తీర్ణం: 3.25 ఎకరాలు"
+  },
+  {
+    "id": "REC-GJ-ANYROR-006",
+    "state": "Gujarat",
+    "document_type": "AnyRoR 7/12",
+    "language": "gu",
+    "script": "Gujarati",
+    "entities": {
+      "village": "સાનંદ",
+      "tehsil": "સાનંદ",
+      "district": "અમદાવાદ",
+      "survey_number": "315/2",
+      "khata_number": "120",
+      "owner_name": "પટેલ હરેશભાઈ",
+      "area": 1.8,
+      "area_unit": "હેક્ટર"
+    },
+    "text": "ગુજરાત સરકાર - મહેસૂલ વિભાગ\nAnyRoR ગામ નમૂના નં. ૭/૧૨\nજિલ્લો: અમદાવાદ, તાલુકો: સાનંદ, ગામ: સાનંદ\nસર્વે નંબર: 315/2, ખાતા નંબર: 120\nખાતેદારનું નામ: પટેલ હરેશભાઈ\nક્ષેત્રફળ: 1.80 હેક્ટર"
+  },
+  {
+    "id": "REC-WB-ROR-007",
+    "state": "West Bengal",
+    "document_type": "বাংলারভূমি খতিয়ান (Banglarbhumi RoR)",
+    "language": "bn",
+    "script": "Bengali",
+    "entities": {
+      "village": "বারুইপুর",
+      "tehsil": "বারুইপুর",
+      "district": "দক্ষিণ ২৪ পরগনা",
+      "plot_number": "520",
+      "khatian_number": "304",
+      "owner_name": "অমিত কুমার ঘোষ",
+      "area": 0.45,
+      "area_unit": "একর"
+    },
+    "text": "পশ্চিমবঙ্গ সরকার - ভূমি ও ভূমি সংস্কার দপ্তর\nবাংলারভূমি খতিয়ান তথ্য (RoR)\nজেলা: দক্ষিণ ২৪ পরগনা, ব্লক: বারুইপুর, মৌজা: বারুইপুর\nখতিয়ান নম্বর: 304, দাগ নম্বর: 520\nরায়তের নাম: অমিত কুমার ঘোষ\nজমির পরিমাণ: 0.45 একর"
+  },
+  {
+    "id": "REC-EN-DEED-008",
+    "state": "Karnataka",
+    "document_type": "Sale Deed / Land Title",
+    "language": "en",
+    "script": "Latin",
+    "entities": {
+      "village": "Whitefield",
+      "tehsil": "KR Puram",
+      "district": "Bengaluru Urban",
+      "survey_number": "108/3",
+      "plot_number": "12B",
+      "owner_name": "Vikram Malhotra",
+      "registration_number": "REG-BLR-2024-8891",
+      "area": 2400.0,
+      "area_unit": "sq_ft"
+    },
+    "text": "GOVERNMENT OF KARNATAKA - DEPARTMENT OF STAMPS AND REGISTRATION\nABSOLUTE SALE DEED\nRegistration No: REG-BLR-2024-8891\nDistrict: Bengaluru Urban, Taluk: KR Puram, Village: Whitefield\nSurvey Number: 108/3, Plot Number: 12B\nPurchaser / Owner Name: Vikram Malhotra\nExtent / Measurement: 2400 sq.ft\nBoundaries: North - Road, South - Plot 12A, East - Survey 108/4, West - Main Road"
+  }
+]
