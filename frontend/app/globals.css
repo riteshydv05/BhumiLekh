@@ -2,170 +2,206 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --bg-main: #F8F9FA;
-  --text-main: #1F2937;
-  --text-heading: #111827;
-  --border-color: #D1D5DB;
-  --gov-yellow: #E89B1C;
-  --gov-saffron: #E05A10;
-}
+/* ═══════════════════════════════════════════════════════════════════════════
+   BHUMILEKH — GLOBAL STYLES
+   Light mode is default. Dark mode activates via html.dark class.
+   NO mixing of themes in JSX — use Tailwind dark: variants everywhere.
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Base styling */
-body {
-  background-color: var(--bg-main);
-  color: var(--text-main);
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-}
+/* ─── Google Fonts ─────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900;1,14..32,400&display=swap');
 
-/* Text Size Scaling */
-html.text-size-normal {
+/* ─── Base ──────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
   font-size: 16px;
 }
-html.text-size-large {
-  font-size: 18px;
+html.text-size-large  { font-size: 18px; }
+html.text-size-larger { font-size: 20px; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+  /* Light mode base */
+  @apply bg-gray-50 text-gray-900;
 }
-html.text-size-larger {
-  font-size: 20px;
+html.dark body { @apply bg-gray-950 text-slate-100; }
+
+/* smooth bg/color transitions when switching themes */
+body, header, nav, footer, main, section, div, a, button, input, select {
+  transition-property: background-color, border-color, color;
+  transition-duration: 250ms;
+  transition-timing-function: ease;
 }
 
-/* High Contrast Mode (Light Theme High-Contrast - NEVER Dark Mode) */
-html.high-contrast {
-  --bg-main: #FFFFFF;
-  --text-main: #000000;
-  --text-heading: #000000;
-  --border-color: #000000;
-}
-
-html.high-contrast body {
-  background-color: #FFFFFF !important;
-  color: #000000 !important;
-}
-
-html.high-contrast .gov-card,
-html.high-contrast .bg-white {
-  background-color: #FFFFFF !important;
-  border: 2px solid #000000 !important;
-  color: #000000 !important;
-}
-
-html.high-contrast input,
-html.high-contrast select,
-html.high-contrast textarea {
-  border: 2px solid #000000 !important;
-  color: #000000 !important;
-  background-color: #FFFFFF !important;
-}
-
-html.high-contrast button {
-  font-weight: 700 !important;
-  border: 2px solid #000000 !important;
-}
-
-html.high-contrast a {
-  text-decoration: underline !important;
-  font-weight: 600 !important;
-}
-
-/* Accessible focus ring */
-a:focus-visible,
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
-  outline: 3px solid #E05A10;
+/* ─── Focus Ring ────────────────────────────────────────────────────────────── */
+a:focus-visible, button:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible {
+  outline: 3px solid #D97706;
   outline-offset: 2px;
-}
-
-/* Government Card Styling */
-.gov-card {
-  background-color: #FFFFFF;
-  border: 1px solid #E2E8F0;
   border-radius: 4px;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
 }
 
-.gov-card:hover {
-  border-color: #CBD5E1;
+/* ─── Page Entry Animation ──────────────────────────────────────────────────── */
+main {
+  animation: page-in 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Indian Government Official Tricolor Bar */
+/* ─── Float-up reveal animations ────────────────────────────────────────────── */
+@keyframes float-up {
+  from { opacity: 0; transform: translateY(22px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-float-up   { animation: float-up 0.5s cubic-bezier(0.22,1,0.36,1) both; }
+.animate-float-up-2 { animation: float-up 0.5s 0.12s cubic-bezier(0.22,1,0.36,1) both; }
+.animate-float-up-3 { animation: float-up 0.5s 0.22s cubic-bezier(0.22,1,0.36,1) both; }
+
+/* ─── Shimmer text (LIGHT: amber, DARK: gold) ───────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+.shimmer-text-light {
+  background: linear-gradient(90deg, #92400E 0%, #D97706 35%, #F59E0B 55%, #92400E 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 3.5s linear infinite;
+}
+.shimmer-text-dark {
+  background: linear-gradient(90deg, #F59E0B 0%, #FBBF24 40%, #FDE68A 60%, #F59E0B 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 3.5s linear infinite;
+}
+
+/* ─── Glow pulse ────────────────────────────────────────────────────────────── */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 16px rgba(180,83,9,0.15); }
+  50%       { box-shadow: 0 0 32px rgba(180,83,9,0.35); }
+}
+.animate-glow-pulse { animation: glow-pulse 2.8s ease-in-out infinite; }
+
+/* ─── Marquee Ticker ────────────────────────────────────────────────────────── */
+@keyframes ticker {
+  0%   { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+.animate-marquee {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: ticker 38s linear infinite;
+  gap: 2.5rem;
+}
+.animate-marquee:hover { animation-play-state: paused; }
+
+/* ─── Official Tricolor Bar ─────────────────────────────────────────────────── */
 .tricolor-bar {
-  background: linear-gradient(90deg, #FF9933 0%, #FF9933 33.3%, #FFFFFF 33.3%, #FFFFFF 66.6%, #138808 66.6%, #138808 100%);
+  background: linear-gradient(
+    90deg,
+    #FF9933 0%, #FF9933 33.33%,
+    #FFFFFF 33.33%, #FFFFFF 66.66%,
+    #138808 66.66%, #138808 100%
+  );
   height: 4px;
   width: 100%;
 }
 
-/* Animated Marquee for Official Gazette Tickers */
-@keyframes ticker {
-  0% {
-    transform: translate3d(0, 0, 0);
-  }
-  100% {
-    transform: translate3d(-50%, 0, 0);
-  }
+/* ─── Card Hover Lift (Light) ───────────────────────────────────────────────── */
+.card-lift {
+  transition: transform 0.22s cubic-bezier(0.22,1,0.36,1),
+              box-shadow 0.22s ease,
+              border-color 0.15s ease;
+}
+.card-lift:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 32px rgba(0,0,0,0.09), 0 3px 10px rgba(0,0,0,0.05);
+}
+html.dark .card-lift:hover {
+  box-shadow: 0 10px 32px rgba(0,0,0,0.5), 0 3px 10px rgba(0,0,0,0.3);
 }
 
-.animate-marquee {
-  display: inline-flex;
-  white-space: nowrap;
-  animation: ticker 35s linear infinite;
+/* ─── Custom Scrollbar ──────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { @apply bg-gray-100 dark:bg-gray-900; }
+::-webkit-scrollbar-thumb { @apply bg-gray-300 dark:bg-gray-700; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { @apply bg-gray-400 dark:bg-gray-600; }
+
+/* ─── Leaflet Map ───────────────────────────────────────────────────────────── */
+.leaflet-container { width: 100%; height: 100%; z-index: 10; }
+html.dark .leaflet-tile { filter: brightness(0.8) invert(0.1); }
+
+/* ─── GIS Popup ─────────────────────────────────────────────────────────────── */
+.gis-search-popup .leaflet-popup-content-wrapper {
+  padding: 0; border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+}
+.gis-search-popup .leaflet-popup-content { margin: 0; }
+
+/* ─── High Contrast ─────────────────────────────────────────────────────────── */
+html.high-contrast body {
+  background: #ffffff !important;
+  color: #000000 !important;
+}
+html.high-contrast button,
+html.high-contrast a { font-weight: 700 !important; }
+html.high-contrast input,
+html.high-contrast select {
+  border: 2px solid #000000 !important;
 }
 
-.animate-marquee:hover {
-  animation-play-state: paused;
-}
-
-/* Official Government Table Micro-Styling */
+/* ─── Government Table ──────────────────────────────────────────────────────── */
+.gov-table { @apply w-full border-collapse; }
 .gov-table th {
-  background-color: #F8FAFC;
-  color: #334155;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-size: 0.6875rem;
-  border-bottom: 2px solid #CBD5E1;
-  padding: 0.625rem 0.875rem;
+  @apply bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-slate-400
+         font-bold uppercase text-[11px] tracking-wider border-b-2
+         border-gray-200 dark:border-slate-700 px-3.5 py-2.5;
 }
-
 .gov-table td {
-  border-bottom: 1px solid #E2E8F0;
-  padding: 0.625rem 0.875rem;
+  @apply border-b border-gray-100 dark:border-slate-800
+         text-gray-700 dark:text-slate-300 px-3.5 py-2.5 text-sm;
 }
-
-.gov-table tbody tr:nth-child(even) {
-  background-color: #FBFCFD;
-}
-
 .gov-table tbody tr:hover {
-  background-color: #FEF3C7/40;
+  @apply bg-amber-50 dark:bg-slate-800/60;
 }
 
-/* Custom Scrollbar for Dense Tables */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* ─── Page Transition Loading Bar ───────────────────────────────────────────── */
+/* Shown via JS during Next.js route transitions for instant visual feedback    */
+#page-loading-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 3px;
+  width: 0%;
+  z-index: 9999;
+  background: linear-gradient(90deg, #f59e0b, #d97706, #ef4444);
+  transition: width 0.3s ease, opacity 0.3s ease;
+  pointer-events: none;
+  border-radius: 0 2px 2px 0;
+  box-shadow: 0 0 8px rgba(245,158,11,0.6);
 }
-
-::-webkit-scrollbar-track {
-  background: #F1F5F9;
+#page-loading-bar.loading {
+  width: 80%;
 }
-
-::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
-}
-
-/* Leaflet map styles */
-.leaflet-container {
+#page-loading-bar.done {
   width: 100%;
-  height: 100%;
-  z-index: 10;
+  opacity: 0;
+}
+
+/* ─── Shadow Utility ─────────────────────────────────────────────────────────── */
+.shadow-card {
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05), 0 2px 10px rgba(0,0,0,0.04);
 }
 
