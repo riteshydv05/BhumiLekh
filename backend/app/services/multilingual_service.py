@@ -162,6 +162,48 @@ _DOMAIN_DICTIONARY: dict[str, str] = {
     "ਖਤੌਨੀ": "Khatauni",
     "ਪਿੰਡ": "Village",
     "ਤਹਿਸੀਲ": "Tehsil",
+    "ਜ਼ਿਲ੍ਹਾ": "District",
+    "ਰਕਬਾ": "Area",
+    "ਜਮ੍ਹਾਬੰਦੀ": "Jamabandi (Record of Rights)",
+
+    # Malayalam terms
+    "സർവേ": "Survey",
+    "സർവേ നമ്പർ": "Survey Number",
+    "വില്ലേജ്": "Village",
+    "താലൂക്ക്": "Taluk",
+    "ജില്ല": "District",
+    "ഉടമസ്ഥൻ": "Owner",
+    "വിസ്തീർണം": "Area",
+    "കരം": "Land Tax",
+    "തണ്ടപ്പേര്": "Thandapper (Holding Number)",
+
+    # Odia terms
+    "ଖାତା": "Khata",
+    "ଖାତା ନଂ": "Khata Number",
+    "ପ୍ଲଟ": "Plot",
+    "ପ୍ଲଟ ନଂ": "Plot Number",
+    "ମୌଜା": "Mouza/Village",
+    "ତହସିଲ": "Tehsil",
+    "ଜିଲ୍ଲା": "District",
+    "ଜମି ମାଲିକ": "Land Owner",
+    "ରୟତ": "Tenant/Owner",
+
+    # Urdu terms
+    "خسرہ": "Khasra",
+    "کھتونی": "Khatauni",
+    "موضع": "Mauza/Village",
+    "تحصیل": "Tehsil",
+    "ضلع": "District",
+    "مالک": "Owner",
+    "رقبہ": "Area",
+    "فرد": "Fard (Land Record Copy)",
+
+    # Assamese terms
+    "দাগ": "Dag Number",
+    "পাট্টা": "Patta",
+    "মৌজা": "Mouza",
+    "ৰাজহ": "Revenue",
+    "মাটিকালি": "Land Area",
 }
 
 # ---------------------------------------------------------------------------

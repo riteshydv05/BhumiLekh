@@ -869,3 +869,25 @@ def run_layoutlmv3_inference(
         )
 
     return service.infer(layout_doc, page_num=page_num)
+
+
+def run_layout_analysis(ocr_input: dict | list, page_images: dict[int, Any] | None = None) -> dict:
+    """Analyze document layout structure and classify spatial blocks.
+
+    Accepts either an OCR document dict or a list of OCR pages,
+    converts to normalized LayoutDocument, and returns a serializable layout analysis report.
+    """
+    if isinstance(ocr_input, list):
+        ocr_document = {
+            "page_count": len(ocr_input),
+            "pages": ocr_input,
+            "method": "ocr_pages_list",
+        }
+    elif isinstance(ocr_input, dict):
+        ocr_document = ocr_input
+    else:
+        ocr_document = {"page_count": 0, "pages": [], "method": "unknown"}
+
+    layout_doc = build_layout_document(ocr_document, page_images)
+    return layout_doc.to_dict()
+

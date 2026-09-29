@@ -247,6 +247,21 @@ def detect_anomalies(
     except Exception as exc:
         logger.warning("ML Anomaly detection call skipped due to error: %s", exc)
 
+    # 8. BhumiLekh Validation Engine (State Rules & Business Logic)
+    try:
+        import sys
+        import os
+        engine_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../validation-engine"))
+        if engine_path not in sys.path:
+            sys.path.insert(0, engine_path)
+        from engine import validate_land_record
+        engine_res = validate_land_record(field_map)
+        for failure in engine_res.get("failures", []):
+            anomalies.append(f"Validation Engine [{failure.get('rule_id')}]: {failure.get('message')}")
+            logger.info("Validation Engine rule violation: %s", failure)
+    except Exception as exc:
+        logger.warning("Validation Engine execution skipped: %s", exc)
+
     if anomalies:
         validation.requires_human_review = True
         logger.warning(
@@ -258,3 +273,14 @@ def detect_anomalies(
         logger.info("Anomaly detection: no anomalies found")
 
     return anomalies
+
+
+def validate_record_with_engine(record: dict[str, Any]) -> dict[str, Any]:
+    """Validate a land record dictionary using the modular Validation Engine."""
+    import sys
+    import os
+    engine_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../validation-engine"))
+    if engine_path not in sys.path:
+        sys.path.insert(0, engine_path)
+    from engine import validate_land_record
+    return validate_land_record(record)

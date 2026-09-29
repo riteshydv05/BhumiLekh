@@ -208,21 +208,9 @@ def _stage_handwriting(
     content_type: str,
     ocr_pages: list,
     handwriting_regions: list[dict] | None = None,
+    language: str = "auto",
 ) -> list[dict]:
-    """HANDWRITING stage: run TrOCR on detected or explicit handwriting regions.
-
-    Strategy:
-      1. If ``handwriting_regions`` are provided explicitly (caller-supplied
-         bounding boxes), process those on their respective pages.
-      2. Otherwise, identify blocks in ``ocr_pages`` where the PaddleOCR
-         confidence is below ``HANDWRITING_CONF_THRESHOLD`` — these are
-         likely to be handwritten or poorly printed regions.
-      3. Render the relevant page images (via pdf_renderer or direct PIL)
-         and pass each crop to TrOCR.
-      4. Returns a list of HwOcrResult dicts (serializable).
-      5. If TrOCR is unavailable, returns a single dict with status=unavailable.
-      6. Never raises — all exceptions are caught and logged.
-    """
+    """HANDWRITING stage: run TrOCR / Indic HTR on detected or explicit handwriting regions."""
     from app.services.trocr_service import (
         run_trocr_on_regions, get_trocr_status, HwOcrResult
     )
@@ -242,8 +230,8 @@ def _stage_handwriting(
     # -----------------------------------------------------------------------
     if handwriting_regions:
         logger.info(
-            "[%s][HANDWRITING] Processing %d explicit handwriting regions",
-            doc_id, len(handwriting_regions),
+            "[%s][HANDWRITING] Processing %d explicit handwriting regions (lang=%s)",
+            doc_id, len(handwriting_regions), language,
         )
         # Group regions by page number
         from collections import defaultdict
@@ -261,7 +249,7 @@ def _stage_handwriting(
                     "[%s][HANDWRITING] No rendered image for page %d", doc_id, page_num
                 )
                 continue
-            results = run_trocr_on_regions(pil_img, regions, page=page_num)
+            results = run_trocr_on_regions(pil_img, regions, page=page_num, language=language)
             hw_results.extend(r.to_dict() for r in results)
 
     # -----------------------------------------------------------------------
@@ -312,7 +300,7 @@ def _stage_handwriting(
                     doc_id, page_num,
                 )
                 continue
-            results = run_trocr_on_regions(pil_img, regions, page=page_num)
+            results = run_trocr_on_regions(pil_img, regions, page=page_num, language=language)
             hw_results.extend(r.to_dict() for r in results)
 
     logger.info(
@@ -483,6 +471,21 @@ def _stage_ocr(doc_id: str, file_bytes: bytes, content_type: str) -> tuple[str, 
     finally:
         db.close()
 
+    # Pre-OCR script detection if language is auto/unknown
+    if target_lang in ("auto", "unknown", None) and file_bytes:
+        try:
+            from app.services.script_detector import detect_script_from_document
+            detection = detect_script_from_document(file_bytes, content_type)
+            if detection and detection.language_code:
+                target_lang = detection.language_code
+                logger.info(
+                    "[%s][OCR_PROCESSING] Dynamic script detector: lang=%s (%s), conf=%.2f",
+                    doc_id, target_lang, detection.language_name, detection.confidence,
+                )
+                _set_status(doc_id, STATUS_OCR, detected_language=target_lang)
+        except Exception as det_err:
+            logger.warning("[%s][OCR_PROCESSING] Script detector exception: %s", doc_id, det_err)
+
     logger.info("[%s][OCR_PROCESSING] Starting OCR (type=%s, lang=%s)", doc_id, content_type, target_lang)
     ocr_result = run_ocr(file_bytes, content_type, language=target_lang)
 
@@ -618,14 +621,41 @@ def _stage_layout_analysis(
 
 
 def _stage_language_detection(doc_id: str | uuid.UUID, text: str) -> str:
-    """Detect language and persist to document."""
+    """Detect language and persist to document, preserving pre-OCR script detection."""
     from app.services.language_service import detect_language
-
-    lang = detect_language(text)
-    logger.info("[%s] Detected language: %s", doc_id, lang)
 
     db = _get_db_session()
     target_uuid = uuid.UUID(str(doc_id)) if not isinstance(doc_id, uuid.UUID) else doc_id
+    existing_lang = None
+    try:
+        from app.models.document import Document
+        doc = db.query(Document).filter(Document.id == target_uuid).first()
+        if doc and doc.detected_language and doc.detected_language not in ("unknown", "auto"):
+            existing_lang = doc.detected_language
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+    lang = detect_language(text)
+
+    # Protect existing high-confidence script if text is short, ambiguous, or matches script
+    if existing_lang and existing_lang not in ("unknown", "auto"):
+        if lang in ("unknown", "en") and existing_lang != "en":
+            lang = existing_lang
+        elif existing_lang in ("ta", "te", "kn", "ml", "gu", "bn", "pa", "mr") and lang != existing_lang:
+            from app.services.intelligent_ocr_router import count_unicode_scripts
+            counts = count_unicode_scripts(text)
+            lang_to_script = {
+                "ta": "Tamil", "te": "Telugu", "kn": "Kannada", "ml": "Malayalam",
+                "gu": "Gujarati", "bn": "Bengali", "pa": "Gurmukhi", "mr": "Devanagari"
+            }
+            if counts.get(lang_to_script.get(existing_lang, ""), 0) > 0:
+                lang = existing_lang
+
+    logger.info("[%s] Detected language: %s", doc_id, lang)
+
+    db = _get_db_session()
     try:
         from app.models.document import Document
         doc = db.query(Document).filter(Document.id == target_uuid).first()
@@ -826,11 +856,29 @@ def process_document(self, document_id: str) -> dict:
         text: str = ""
         ocr_pages: list = []
         
-        # Check if OCR was already completed in prior run
+        doc_lang = None
+        db_s = _get_db_session()
+        try:
+            from app.models.document import Document
+            d_obj = db_s.query(Document).filter(Document.id == uuid.UUID(str(doc_id))).first()
+            if d_obj:
+                doc_lang = d_obj.detected_language
+        except Exception:
+            pass
+        finally:
+            db_s.close()
+
+        # Check if OCR was already completed in prior run with matching language
+        checkpoint_valid = False
         if metadata["stages"].get("ocr", {}).get("status") == "ok" and "ocr_pages" in metadata["stages"]["ocr"]:
+            prior_lang = metadata["stages"]["ocr"].get("language")
+            if not doc_lang or doc_lang in ("auto", "unknown") or prior_lang == doc_lang:
+                checkpoint_valid = True
+
+        if checkpoint_valid:
             logger.info("%s[OCR] Reusing checkpointed OCR results", log_prefix)
             ocr_pages = metadata["stages"]["ocr"]["ocr_pages"]
-            text = metadata["stages"]["ocr"].get("text_preview", "")
+            text = metadata["stages"]["ocr"].get("full_text") or metadata["stages"]["ocr"].get("text_preview", "")
         else:
             try:
                 text, ocr_pages = _stage_ocr(doc_id, file_bytes, content_type)
@@ -838,7 +886,9 @@ def process_document(self, document_id: str) -> dict:
                 metadata["stages"]["ocr"] = {
                     "status": "ok",
                     "text_length": len(text),
+                    "full_text": text,
                     "text_preview": text[:300] if text else "",
+                    "language": doc_lang or "auto",
                     "method": "paddle" if ocr_pages and any(
                         b.get("ocr_engine") == "paddle"
                         for p in ocr_pages for b in p.get("blocks", [])
@@ -901,11 +951,14 @@ def process_document(self, document_id: str) -> dict:
             metadata["stages"]["layout"] = {"status": "failed", "error": str(exc)}
 
         # --------------------------------------------------------------
-        # Stage 4: HANDWRITING (TrOCR)
+        # Stage 4: HANDWRITING (TrOCR / Indic HTR)
         # --------------------------------------------------------------
         try:
+            doc_lang = "auto"
+            if ocr_pages and ocr_pages[0].get("blocks"):
+                doc_lang = ocr_pages[0]["blocks"][0].get("language", "auto")
             hw_results = _stage_handwriting(
-                doc_id, file_bytes, content_type, ocr_pages
+                doc_id, file_bytes, content_type, ocr_pages, language=doc_lang
             )
             processed = [r for r in hw_results if r.get("text")]
             metadata["stages"]["handwriting"] = {

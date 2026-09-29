@@ -196,6 +196,38 @@ _TESSERACT_LANG_MAP: dict[str, list[str]] = {
 }
 
 
+def _get_safe_tesseract_langs(target_lang: str) -> list[str]:
+    """Return a list of valid tesseract lang codes based on installed language packages."""
+    import pytesseract  # noqa: PLC0415
+    try:
+        installed = set(pytesseract.get_languages())
+    except Exception:
+        installed = {"eng"}
+
+    lang_key = (target_lang or "auto").lower().strip()
+    candidates = _TESSERACT_LANG_MAP.get(lang_key, ["eng"])
+    
+    # Filter candidates to only those whose composite components are all installed
+    valid_langs = []
+    for cand in candidates:
+        parts = cand.split("+")
+        if all(p in installed for p in parts):
+            valid_langs.append(cand)
+        else:
+            # Try single parts that are installed
+            for p in parts:
+                if p in installed and p not in valid_langs:
+                    valid_langs.append(p)
+
+    if not valid_langs:
+        # Ultimate fallback to any available Indic lang or eng
+        for fallback in ["hin", "mar", "tam", "tel", "kan", "guj", "ben", "eng"]:
+            if fallback in installed:
+                valid_langs.append(fallback)
+                break
+    return valid_langs or ["eng"]
+
+
 def _extract_text_image_tesseract(
     image_bytes: bytes, language: str = "auto"
 ) -> tuple[str, float]:
@@ -210,19 +242,7 @@ def _extract_text_image_tesseract(
 
     img = Image.open(BytesIO(image_bytes)).convert("L")  # grayscale
 
-    lang_key = (language or "auto").lower().strip()
-    if lang_key in _TESSERACT_LANG_MAP:
-        langs_to_try = _TESSERACT_LANG_MAP[lang_key] + ["tam+hin+mar+tel+kan+guj+ben+eng", "eng"]
-    else:
-        langs_to_try = [
-            "tam+hin+mar+tel+kan+guj+ben+eng",
-            "tam+eng",
-            "hin+eng",
-            "mar+hin+eng",
-            "tel+eng",
-            "kan+eng",
-            "eng",
-        ]
+    langs_to_try = _get_safe_tesseract_langs(language)
 
     data = None
     for lang_code in langs_to_try:
@@ -239,10 +259,14 @@ def _extract_text_image_tesseract(
             continue
 
     if not data:
-        data = pytesseract.image_to_data(
-            img,
-            output_type=pytesseract.Output.DICT,
-        )
+        try:
+            data = pytesseract.image_to_data(
+                img,
+                output_type=pytesseract.Output.DICT,
+            )
+        except Exception as exc:
+            logger.warning("Tesseract default run failed: %s", exc)
+            return "", 0.0
 
     words = [
         (data["text"][i], int(data["conf"][i]))
@@ -254,6 +278,48 @@ def _extract_text_image_tesseract(
         sum(c for _, c in words) / len(words) / 100.0 if words else 0.0
     )
     return text, avg_conf
+
+
+def _run_tesseract_on_pdf_renders(
+    page_renders: list, language: str = "auto"
+) -> tuple[list[dict], int, float]:
+    """Run Tesseract OCR on rendered PDF pages when PaddleOCR is unavailable or yields empty text."""
+    pages: list[dict] = []
+    all_conf: list[float] = []
+
+    for page_num, pil_img, w, h in page_renders:
+        buf = BytesIO()
+        pil_img.save(buf, format="PNG")
+        try:
+            text, conf = _extract_text_image_tesseract(buf.getvalue(), language=language)
+        except Exception as exc:
+            logger.warning("Tesseract PDF page %d fallback failed: %s", page_num, exc)
+            text, conf = "", 0.0
+
+        if conf > 0:
+            all_conf.append(conf)
+
+        blocks = []
+        if text.strip():
+            lines = [l.strip() for l in text.split("\n") if l.strip()]
+            for l in lines:
+                blocks.append({
+                    "text": l,
+                    "bbox": [0.0, 0.0, float(w), float(h)],
+                    "confidence": conf,
+                    "language": language,
+                    "ocr_engine": "tesseract",
+                    "timestamp": datetime.utcnow().isoformat(),
+                })
+        pages.append({
+            "page": page_num,
+            "width": w,
+            "height": h,
+            "blocks": blocks,
+        })
+
+    avg_conf = sum(all_conf) / len(all_conf) if all_conf else 0.0
+    return pages, len(pages), avg_conf
 
 
 # ---------------------------------------------------------------------------
@@ -314,9 +380,11 @@ def run_ocr(file_bytes: bytes, content_type: str, language: str = "auto") -> OCR
     """Run OCR on a document, returning a backward-compatible OCRResult.
 
     Engine selection:
+      - Script detection automatically resolves script/language when language is "auto".
       - PaddleOCR is tried first for all supported types with script routing.
-      - pypdf text extraction is the PDF fallback.
-      - Tesseract is the image fallback (uses requested language).
+      - Tesseract on rendered pages is tried if PaddleOCR produces no text on scanned PDFs.
+      - pypdf text extraction is the fallback for digital PDFs with embedded text layers.
+      - Tesseract is the image fallback (uses safe installed language packs).
 
     The result includes a ``pages`` field with the normalized block-level
     structure for downstream spatial processing (LayoutLMv3 etc.).
@@ -327,51 +395,90 @@ def run_ocr(file_bytes: bytes, content_type: str, language: str = "auto") -> OCR
     paddle_succeeded = False
 
     # -----------------------------------------------------------------------
+    # Dynamic Script Resolution (if auto or unknown)
+    # -----------------------------------------------------------------------
+    resolved_lang = language or "auto"
+    if resolved_lang in ("auto", "unknown") and file_bytes:
+        try:
+            from app.services.script_detector import detect_script_from_document
+            det = detect_script_from_document(file_bytes, content_type)
+            if det and det.language_code:
+                resolved_lang = det.language_code
+                logger.info("run_ocr auto-resolved language: %s (%s)", resolved_lang, det.language_name)
+        except Exception as det_err:
+            logger.debug("Script auto-detection skipped in run_ocr: %s", det_err)
+    if resolved_lang in ("auto", "unknown"):
+        resolved_lang = "hi"
+
+    # -----------------------------------------------------------------------
     # 1. Try PaddleOCR (primary for all types)
     # -----------------------------------------------------------------------
     if content_type == "application/pdf":
         result.page_count = 0  # Will be set by the chosen method
         try:
-            pages, page_count, avg_conf = _run_paddle_on_pdf(file_bytes, language=language)
-            result.pages = pages
-            result.page_count = page_count
-            result.confidence = round(avg_conf, 4)
-            result.text = "\n\n".join(
+            pages, page_count, avg_conf = _run_paddle_on_pdf(file_bytes, language=resolved_lang)
+            extracted_text = "\n\n".join(
                 "\n".join(b["text"] for b in p["blocks"]) for p in pages
             )
-            result.method = f"paddle({language})+pypdfium2"
-            paddle_succeeded = True
-            logger.info(
-                "PaddleOCR PDF (%s): %d pages, %d chars, conf=%.2f",
-                language, page_count, len(result.text), avg_conf,
-            )
+            if extracted_text.strip():
+                result.pages = pages
+                result.page_count = page_count
+                result.confidence = round(avg_conf, 4)
+                result.text = extracted_text
+                result.method = f"paddle({resolved_lang})+pypdfium2"
+                paddle_succeeded = True
+                logger.info(
+                    "PaddleOCR PDF (%s): %d pages, %d chars, conf=%.2f",
+                    resolved_lang, page_count, len(result.text), avg_conf,
+                )
         except Exception as exc:
             logger.warning(
-                "PaddleOCR PDF failed (will try pypdf fallback): %s", exc
+                "PaddleOCR PDF failed (will try Tesseract/pypdf fallback): %s", exc
             )
             result.warnings.append(f"PaddleOCR PDF failed: {exc}")
 
         # -------------------------------------------------------------------
-        # 1b. pypdf text fallback (for text-layer PDFs when PaddleOCR fails
-        #     or extracted nothing)
+        # 1b. Tesseract PDF render fallback (critical for scanned PDFs in Indic languages)
+        # -------------------------------------------------------------------
+        if not paddle_succeeded or not result.text.strip():
+            try:
+                from app.services.pdf_renderer import render_pdf_pages
+                page_renders = render_pdf_pages(file_bytes)
+                if page_renders:
+                    t_pages, t_count, t_conf = _run_tesseract_on_pdf_renders(page_renders, language=resolved_lang)
+                    t_text = "\n\n".join(
+                        "\n".join(b["text"] for b in p["blocks"]) for p in t_pages
+                    )
+                    if t_text.strip():
+                        result.pages = t_pages
+                        result.page_count = t_count
+                        result.confidence = round(t_conf, 4)
+                        result.text = t_text
+                        result.method = f"tesseract({resolved_lang})+pypdfium2"
+                        paddle_succeeded = True
+                        logger.info(
+                            "Tesseract PDF page fallback (%s): %d pages, %d chars, conf=%.2f",
+                            resolved_lang, t_count, len(t_text), t_conf,
+                        )
+            except Exception as exc:
+                logger.warning("Tesseract PDF page fallback failed: %s", exc)
+                result.warnings.append(f"Tesseract PDF fallback failed: {exc}")
+
+        # -------------------------------------------------------------------
+        # 1c. pypdf text fallback (for text-layer PDFs when OCR failed or doc is digital)
         # -------------------------------------------------------------------
         if not paddle_succeeded or not result.text.strip():
             try:
                 text, page_count, pages = _extract_text_pdf_pypdf(file_bytes)
                 if text.strip():
-                    if not result.text.strip():
-                        result.text = text
-                        result.page_count = page_count
-                        result.pages = pages
-                        result.confidence = 1.0
-                        result.method = "pypdf_text"
-                        logger.info(
-                            "pypdf fallback: %d pages, %d chars", page_count, len(text)
-                        )
-                    else:
-                        result.text = text
-                        result.method += "+pypdf_text_merge"
-                        logger.info("Merged pypdf text with empty PaddleOCR result")
+                    result.text = text
+                    result.page_count = page_count
+                    result.pages = pages
+                    result.confidence = 1.0
+                    result.method = "pypdf_text"
+                    logger.info(
+                        "pypdf fallback: %d pages, %d chars", page_count, len(text)
+                    )
             except Exception as exc:
                 msg = f"pypdf fallback failed: {exc}"
                 result.warnings.append(msg)
@@ -385,16 +492,18 @@ def run_ocr(file_bytes: bytes, content_type: str, language: str = "auto") -> OCR
 
         # Try PaddleOCR on image for all supported languages
         try:
-            pages, avg_conf = _run_paddle_on_image_bytes(file_bytes, language=language)
+            pages, avg_conf = _run_paddle_on_image_bytes(file_bytes, language=resolved_lang)
             if pages and pages[0].get("blocks"):
-                result.pages = pages
-                result.confidence = round(avg_conf, 4)
-                result.text = "\n".join(b["text"] for b in pages[0]["blocks"])
-                result.method = f"paddle({language})"
-                paddle_succeeded = True
-                logger.info(
-                    "PaddleOCR image (%s): %d chars, conf=%.2f", language, len(result.text), avg_conf
-                )
+                extracted_text = "\n".join(b["text"] for b in pages[0]["blocks"])
+                if extracted_text.strip():
+                    result.pages = pages
+                    result.confidence = round(avg_conf, 4)
+                    result.text = extracted_text
+                    result.method = f"paddle({resolved_lang})"
+                    paddle_succeeded = True
+                    logger.info(
+                        "PaddleOCR image (%s): %d chars, conf=%.2f", resolved_lang, len(result.text), avg_conf
+                    )
         except Exception as exc:
             logger.warning(
                 "PaddleOCR image failed (will try Tesseract fallback): %s", exc
@@ -404,11 +513,11 @@ def run_ocr(file_bytes: bytes, content_type: str, language: str = "auto") -> OCR
         # Tesseract fallback if PaddleOCR didn't yield text
         if not paddle_succeeded or not result.text.strip():
             try:
-                text, conf = _extract_text_image_tesseract(file_bytes, language=language)
+                text, conf = _extract_text_image_tesseract(file_bytes, language=resolved_lang)
                 if text.strip():
                     result.text = text
                     result.confidence = round(conf, 4)
-                    result.method = f"tesseract({language})"
+                    result.method = f"tesseract({resolved_lang})"
                     ts = datetime.utcnow().isoformat()
                     result.pages = [{
                         "page": 1,
@@ -418,13 +527,13 @@ def run_ocr(file_bytes: bytes, content_type: str, language: str = "auto") -> OCR
                             "text": text,
                             "bbox": [0.0, 0.0, 0.0, 0.0],
                             "confidence": conf,
-                            "language": language,
+                            "language": resolved_lang,
                             "ocr_engine": "tesseract",
                             "timestamp": ts,
                         }],
                     }]
                     logger.info(
-                        "Tesseract OCR (%s): %d chars, conf=%.2f", language, len(text), conf
+                        "Tesseract OCR (%s): %d chars, conf=%.2f", resolved_lang, len(text), conf
                     )
             except RuntimeError as exc:
                 result.warnings.append(str(exc))

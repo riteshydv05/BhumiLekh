@@ -60,9 +60,14 @@ def create_sample_land_record_image() -> bytes:
 
 @pytest.fixture(scope="module")
 def setup_database():
-    """Ensure test database tables are present."""
-    import app.models  # noqa: F401
-    Base.metadata.create_all(bind=engine)
+    """Ensure test database tables are present without requiring SpatiaLite for GIS polygon columns."""
+    from app.models.document import Document
+    from app.models.document_result import DocumentResult
+    from app.models.document_page import DocumentPage
+    from app.models.validation_result import ValidationResult
+
+    for model in [Document, DocumentResult, DocumentPage, ValidationResult]:
+        model.__table__.create(bind=engine, checkfirst=True)
     yield
 
 

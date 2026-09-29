@@ -13,7 +13,7 @@
         "village": "Shivajinagar",
         "tehsil": "Haveli",
         "district": "Pune",
-        "state": "MH",
+        "state": "Maharashtra",
         "area_ha": 1.45
       },
       "geometry": {
@@ -39,7 +39,7 @@
         "village": "Shivajinagar",
         "tehsil": "Haveli",
         "district": "Pune",
-        "state": "MH",
+        "state": "Maharashtra",
         "area_ha": 0.95
       },
       "geometry": {
@@ -51,6 +51,83 @@
             [73.8583, 18.5212],
             [73.8575, 18.5212],
             [73.8575, 18.5204]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "survey_number": "142/2",
+        "khasra_number": "142",
+        "khata_number": "88",
+        "owner_name": "Ram Prasad Verma",
+        "village": "Bakshi Ka Talab",
+        "tehsil": "Bakshi Ka Talab",
+        "district": "Lucknow",
+        "state": "Uttar Pradesh",
+        "area_ha": 0.854
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [80.9125, 26.9854],
+            [80.9135, 26.9854],
+            [80.9135, 26.9863],
+            [80.9125, 26.9863],
+            [80.9125, 26.9854]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "survey_number": "88/2A",
+        "khasra_number": "88",
+        "patta_number": "450",
+        "owner_name": "Muthusamy Gounder",
+        "village": "Melur",
+        "tehsil": "Melur",
+        "district": "Madurai",
+        "state": "Tamil Nadu",
+        "area_ha": 1.12
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [78.3312, 10.0345],
+            [78.3325, 10.0345],
+            [78.3325, 10.0356],
+            [78.3312, 10.0356],
+            [78.3312, 10.0345]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "survey_number": "72/1",
+        "hissa_number": "1",
+        "owner_name": "Narayana Swamy",
+        "village": "Devanahalli",
+        "tehsil": "Devanahalli",
+        "district": "Bengaluru Rural",
+        "state": "Karnataka",
+        "area_ha": 2.34
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [77.7123, 13.2456],
+            [77.7140, 13.2456],
+            [77.7140, 13.2470],
+            [77.7123, 13.2470],
+            [77.7123, 13.2456]
           ]
         ]
       }

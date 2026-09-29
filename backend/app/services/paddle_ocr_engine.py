@@ -78,6 +78,7 @@ def detect_script(text: str) -> str:
     gujarati_count = sum(1 for c in text if '\u0A80' <= c <= '\u0AFF')
     bengali_count = sum(1 for c in text if '\u0980' <= c <= '\u09FF')
     punjabi_count = sum(1 for c in text if '\u0A00' <= c <= '\u0A7F')
+    odia_count = sum(1 for c in text if '\u0B00' <= c <= '\u0B7F')
 
     counts = {
         "hi": devanagari_count,
@@ -88,6 +89,7 @@ def detect_script(text: str) -> str:
         "gu": gujarati_count,
         "bn": bengali_count,
         "pa": punjabi_count,
+        "or": odia_count,
     }
 
     max_lang = max(counts, key=counts.get)
@@ -338,6 +340,8 @@ def get_engine_status() -> dict:
     """Return engine initialization status for health-checks/diagnostics."""
     return {
         "importable": _PADDLE_IMPORTABLE,
+        "initialized": len(_ocr_registry) > 0,
+        "lang": _DEFAULT_LANG,
         "loaded_languages": list(_ocr_registry.keys()),
         "failed_languages": list(_failed_languages),
         "use_angle_cls": _USE_ANGLE,
