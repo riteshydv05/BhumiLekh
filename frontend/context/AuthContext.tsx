@@ -10,16 +10,35 @@ export interface DummyAccount {
   password: string;
   badgeColor: string;
   description: string;
+  portal: "citizen" | "government";
 }
 
-export const DUMMY_ACCOUNTS: DummyAccount[] = [
+/** Roles that belong to the Government portal */
+export const GOVERNMENT_ROLES = ["ADMIN", "OFFICER", "VERIFIER"] as const;
+export type GovernmentRole = (typeof GOVERNMENT_ROLES)[number];
+
+/** All seeded demo accounts — split by portal */
+export const CITIZEN_ACCOUNTS: DummyAccount[] = [
   {
-    label: "Super Administrator (Tehsildar)",
+    label: "Citizen / Khatedar (Public)",
+    role: "USER",
+    username: "user1",
+    password: "user123",
+    badgeColor: "bg-emerald-100 text-emerald-900 border-emerald-300",
+    description: "View-only access to public RoR records and cadastral map boundaries.",
+    portal: "citizen",
+  },
+];
+
+export const GOVERNMENT_ACCOUNTS: DummyAccount[] = [
+  {
+    label: "District Administrator (Tehsildar)",
     role: "ADMIN",
     username: "admin",
     password: "admin123",
     badgeColor: "bg-purple-100 text-purple-900 border-purple-300",
     description: "Full system administration, user management, status overrides, and document deletion.",
+    portal: "government",
   },
   {
     label: "Revenue Nodal Officer",
@@ -27,7 +46,8 @@ export const DUMMY_ACCOUNTS: DummyAccount[] = [
     username: "officer1",
     password: "officer123",
     badgeColor: "bg-blue-100 text-blue-900 border-blue-300",
-    description: "Field audit approvals, mutation validations, and document status updates.",
+    description: "Field audit approvals, mutation validations, GIS review and document status updates.",
+    portal: "government",
   },
   {
     label: "Document Verifier (Patwari)",
@@ -36,15 +56,14 @@ export const DUMMY_ACCOUNTS: DummyAccount[] = [
     password: "verifier123",
     badgeColor: "bg-amber-100 text-amber-900 border-amber-300",
     description: "Human-in-the-loop field verification and OCR transcription corrections.",
+    portal: "government",
   },
-  {
-    label: "Citizen / Khatedar (Public)",
-    role: "USER",
-    username: "user1",
-    password: "user123",
-    badgeColor: "bg-emerald-100 text-emerald-900 border-emerald-300",
-    description: "View-only access to public RoR records and cadastral map boundaries.",
-  },
+];
+
+/** All accounts combined (legacy compat) */
+export const DUMMY_ACCOUNTS: DummyAccount[] = [
+  ...CITIZEN_ACCOUNTS,
+  ...GOVERNMENT_ACCOUNTS,
 ];
 
 interface AuthContextType {
@@ -53,9 +72,17 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<AuthTokenResponse>;
   logout: () => void;
   hasRole: (roles: string | string[]) => boolean;
+  /** true if user has any government-side role (ADMIN | OFFICER | VERIFIER) */
+  isGovernment: boolean;
+  /** true if user is a public citizen (USER role) */
+  isCitizen: boolean;
+  /** true if user is ADMIN */
   isAdmin: boolean;
+  /** @deprecated use isGovernment — kept for compat with existing components */
   isOfficer: boolean;
   dummyAccounts: DummyAccount[];
+  citizenAccounts: DummyAccount[];
+  governmentAccounts: DummyAccount[];
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -100,8 +127,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return roleList.includes(user.role);
   };
 
+  const isGovernment = GOVERNMENT_ROLES.includes(user?.role as GovernmentRole);
+  const isCitizen = user?.role === "USER";
   const isAdmin = user?.role === "ADMIN";
-  const isOfficer = user?.role === "ADMIN" || user?.role === "OFFICER";
+  // Legacy alias — ADMIN | OFFICER | VERIFIER all get government portal access
+  const isOfficer = isGovernment;
 
   return (
     <AuthContext.Provider
@@ -111,9 +141,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         logout,
         hasRole,
+        isGovernment,
+        isCitizen,
         isAdmin,
         isOfficer,
         dummyAccounts: DUMMY_ACCOUNTS,
+        citizenAccounts: CITIZEN_ACCOUNTS,
+        governmentAccounts: GOVERNMENT_ACCOUNTS,
       }}
     >
       {children}
