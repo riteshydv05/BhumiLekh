@@ -545,10 +545,17 @@ export interface GeoJSONFeatureCollection {
   type: "FeatureCollection";
   features: GeoJSONFeature[];
   metadata?: {
-    total_parcels: number;
-    source: string;
-    crs: string;
-    note: string;
+    total_parcels?: number;
+    source?: string;
+    crs?: string;
+    note?: string;
+    query_lat?: number;
+    query_lng?: number;
+    radius_m?: number;
+    results?: number;
+    spatial_method?: string;
+    filters?: Record<string, string | null>;
+    error?: string;
   };
 }
 
@@ -575,19 +582,117 @@ export interface IntegrationStatus {
   data_source_label: string;
 }
 
-export async function getGISParcels(village?: string, district?: string): Promise<GeoJSONFeatureCollection> {
+// ---------------------------------------------------------------------------
+// GIS Parcel Stats
+// ---------------------------------------------------------------------------
+
+export interface GISStats {
+  total_records: number;
+  records_with_geometry: number;
+  geometry_coverage_pct: number;
+  by_district: { district: string; count: number }[];
+  by_land_classification: { classification: string; count: number }[];
+  by_state: { state: string; count: number }[];
+  error?: string;
+}
+
+export interface OverlapResult {
+  parcel_a: { id: string; survey: string | null; owner: string | null; village: string | null };
+  parcel_b: { id: string; survey: string | null; owner: string | null; village: string | null };
+  conflict_type: string;
+}
+
+export interface OverlapResponse {
+  overlap_count: number;
+  overlaps: OverlapResult[];
+  method: string;
+  note?: string;
+}
+
+// ---------------------------------------------------------------------------
+// GIS API Functions
+// ---------------------------------------------------------------------------
+
+export async function getGISParcels(
+  village?: string,
+  district?: string,
+  state?: string,
+  land_classification?: string,
+  limit?: number,
+): Promise<GeoJSONFeatureCollection> {
   const params = new URLSearchParams();
   if (village) params.set("village", village);
   if (district) params.set("district", district);
+  if (state) params.set("state", state);
+  if (land_classification) params.set("land_classification", land_classification);
+  if (limit) params.set("limit", String(limit));
   const qs = params.toString() ? `?${params.toString()}` : "";
 
   const res = await fetch(`${API_BASE_URL}/documents/integration/gis/parcels${qs}`, {
     method: "GET",
     cache: "no-store",
   });
-
   if (!res.ok) throw new Error(`Failed to get parcels (${res.status})`);
   return res.json();
+}
+
+export async function getParcelById(recordId: string): Promise<GeoJSONFeature> {
+  const res = await fetch(`${API_BASE_URL}/documents/integration/gis/parcels/${recordId}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Parcel not found (${res.status})`);
+  return res.json();
+}
+
+export async function getNearbyParcels(
+  lat: number,
+  lng: number,
+  radiusM: number = 5000,
+): Promise<GeoJSONFeatureCollection> {
+  const params = new URLSearchParams({ lat: String(lat), lng: String(lng), radius: String(radiusM) });
+  const res = await fetch(`${API_BASE_URL}/documents/integration/gis/parcels/nearby?${params}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Nearby query failed (${res.status})`);
+  return res.json();
+}
+
+export async function getGISStats(): Promise<GISStats> {
+  const res = await fetch(`${API_BASE_URL}/documents/integration/gis/stats`, {
+    method: "GET",
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`GIS stats failed (${res.status})`);
+  return res.json();
+}
+
+export async function getGISFilterValues(field: "villages" | "districts" | "states" | "land-classifications"): Promise<{ values: string[]; field: string }> {
+  const res = await fetch(`${API_BASE_URL}/documents/integration/gis/filters/${field}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`GIS filter values failed (${res.status})`);
+  return res.json();
+}
+
+export async function detectParcelOverlaps(limit: number = 50): Promise<OverlapResponse> {
+  const res = await fetch(`${API_BASE_URL}/documents/integration/gis/overlaps?limit=${limit}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Overlap detection failed (${res.status})`);
+  return res.json();
+}
+
+export function getGISExportUrl(village?: string, district?: string, state?: string): string {
+  const params = new URLSearchParams();
+  if (village) params.set("village", village);
+  if (district) params.set("district", district);
+  if (state) params.set("state", state);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return `${API_BASE_URL}/documents/integration/gis/export/geojson${qs}`;
 }
 
 export async function getDocumentParcel(docId: string): Promise<DocumentParcelResponse> {
@@ -595,7 +700,6 @@ export async function getDocumentParcel(docId: string): Promise<DocumentParcelRe
     method: "GET",
     cache: "no-store",
   });
-
   if (!res.ok) throw new Error(`Failed to get document parcel (${res.status})`);
   return res.json();
 }
@@ -606,7 +710,6 @@ export async function lookupLRMS(params: Record<string, string>): Promise<LRMSLo
     method: "GET",
     cache: "no-store",
   });
-
   if (!res.ok) throw new Error(`LRMS lookup failed (${res.status})`);
   return res.json();
 }
@@ -616,7 +719,6 @@ export async function getIntegrationStatus(): Promise<IntegrationStatus> {
     method: "GET",
     cache: "no-store",
   });
-
   if (!res.ok) throw new Error(`Integration status failed (${res.status})`);
   return res.json();
 }

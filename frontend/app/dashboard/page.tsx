@@ -2,7 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { getDocuments, DocumentItem } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import Breadcrumb from "@/components/layout/Breadcrumb";
 import DocumentTable from "@/components/documents/DocumentTable";
 import { useTranslation } from "@/context/AccessibilityContext";
@@ -22,9 +24,17 @@ import {
   Layers,
   Search,
   Building,
+  MapPin,
+  User,
+  Map,
+  ArrowRight,
+  BadgeCheck,
+  BookOpen,
 } from "lucide-react";
 
 export default function DashboardPage() {
+  const router = useRouter();
+  const { user, isGovernment, isCitizen, loading: authLoading } = useAuth();
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -114,7 +124,127 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: t("nav.dashboard") }]} />
+      <Breadcrumb items={[{ label: isCitizen ? "My Land Records" : t("nav.dashboard") }]} />
+
+      {/* ── CITIZEN PORTAL VIEW ─────────────────────────────── */}
+      {isCitizen && (
+        <div className="max-w-4xl mx-auto px-4 py-8 sm:px-6 space-y-6">
+          {/* Citizen header */}
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center shrink-0">
+              <User className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Citizen Portal</p>
+              <h1 className="text-xl font-black text-gray-950 uppercase tracking-tight">
+                My Land Records
+              </h1>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Search your land records by Khasra number, Khata number, Survey number, or owner name.
+              </p>
+            </div>
+          </div>
+
+          {/* Search bar */}
+          <div className="bg-white border-2 border-emerald-200 rounded-xl p-5 shadow-sm space-y-3">
+            <p className="text-xs font-bold text-gray-700 uppercase tracking-wider">Search Land Records</p>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
+                <input
+                  id="citizen-search"
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Enter Khasra No., Khata No., Survey No., or Owner Name…"
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400 focus:outline-none bg-white"
+                />
+              </div>
+              <button
+                id="citizen-search-btn"
+                className="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg text-sm transition flex items-center gap-2"
+              >
+                <Search className="w-4 h-4" />
+                Search
+              </button>
+            </div>
+            <div className="flex items-center gap-3 pt-1 flex-wrap">
+              {["Khasra No.", "Khata No.", "Survey No.", "Owner Name"].map((label) => (
+                <span
+                  key={label}
+                  className="text-[11px] px-2 py-0.5 bg-gray-100 text-gray-600 border border-gray-200 rounded-full cursor-pointer hover:bg-emerald-50 hover:border-emerald-300 transition"
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Quick access cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Link
+              href="/map"
+              id="citizen-map-link"
+              className="group p-4 bg-white border-2 border-gray-200 hover:border-emerald-500 rounded-xl shadow-sm transition flex flex-col gap-2"
+            >
+              <div className="w-10 h-10 bg-emerald-100 text-emerald-700 rounded-lg flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition">
+                <Map className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-bold text-gray-900 text-sm">View on Map</p>
+                <p className="text-xs text-gray-500 mt-0.5">See your plot on the cadastral GIS map</p>
+              </div>
+              <ArrowRight className="w-4 h-4 text-emerald-600 self-end group-hover:translate-x-1 transition-transform" />
+            </Link>
+
+            <Link
+              href="/documents"
+              id="citizen-docs-link"
+              className="group p-4 bg-white border-2 border-gray-200 hover:border-blue-500 rounded-xl shadow-sm transition flex flex-col gap-2"
+            >
+              <div className="w-10 h-10 bg-blue-100 text-blue-700 rounded-lg flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition">
+                <BookOpen className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-bold text-gray-900 text-sm">Land Documents</p>
+                <p className="text-xs text-gray-500 mt-0.5">View digitized RoR documents</p>
+              </div>
+              <ArrowRight className="w-4 h-4 text-blue-600 self-end group-hover:translate-x-1 transition-transform" />
+            </Link>
+
+            <Link
+              href="/verify"
+              id="citizen-verify-link"
+              className="group p-4 bg-white border-2 border-gray-200 hover:border-amber-500 rounded-xl shadow-sm transition flex flex-col gap-2"
+            >
+              <div className="w-10 h-10 bg-amber-100 text-amber-700 rounded-lg flex items-center justify-center group-hover:bg-amber-600 group-hover:text-white transition">
+                <BadgeCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-bold text-gray-900 text-sm">Verify Ownership</p>
+                <p className="text-xs text-gray-500 mt-0.5">Check & verify ownership details</p>
+              </div>
+              <ArrowRight className="w-4 h-4 text-amber-600 self-end group-hover:translate-x-1 transition-transform" />
+            </Link>
+          </div>
+
+          {/* Digitized records list */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Digitized Records ({documents.length})</h2>
+              <button onClick={fetchDocs} disabled={loading} className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1">
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+                Refresh
+              </button>
+            </div>
+            <DocumentTable documents={documents.slice(0, 10)} loading={loading} />
+          </div>
+        </div>
+      )}
+      {/* ── END CITIZEN VIEW ─────────────────────────────────── */}
+
+      {/* ── GOVERNMENT / UNAUTHENTICATED VIEW ──────────────── */}
+      {!isCitizen && (
 
       <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-6">
         {/* Page Header */}
@@ -385,6 +515,7 @@ export default function DashboardPage() {
           </aside>
         </div>
       </div>
+      )} {/* end !isCitizen */}
     </div>
   );
 }

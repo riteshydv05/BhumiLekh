@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useAuth, DUMMY_ACCOUNTS } from "@/context/AuthContext";
+import { useAuth, GOVERNMENT_ACCOUNTS } from "@/context/AuthContext";
 import Breadcrumb from "@/components/layout/Breadcrumb";
 import {
   getDocuments,
@@ -46,7 +46,7 @@ import AdminCharts from "@/components/admin/AdminCharts";
 
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const { user, loading: authLoading, logout, isOfficer, isAdmin } = useAuth();
+  const { user, loading: authLoading, logout, isGovernment, isAdmin } = useAuth();
 
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
@@ -73,6 +73,11 @@ export default function AdminDashboardPage() {
   // Tab State
   const [activeTab, setActiveTab] = useState<"analytics" | "documents" | "users">("analytics");
 
+  // Role capability helpers
+  const canManageDocuments = isGovernment; // ADMIN + OFFICER + VERIFIER
+  const canApproveAndEdit = user?.role === "ADMIN" || user?.role === "OFFICER"; // ADMIN + OFFICER
+  const canManageUsers = isAdmin; // ADMIN only
+
   // Load documents and users
   const loadData = async () => {
     setLoading(true);
@@ -98,10 +103,10 @@ export default function AdminDashboardPage() {
   };
 
   useEffect(() => {
-    if (!authLoading && isOfficer) {
+    if (!authLoading && isGovernment) {
       loadData();
     }
-  }, [authLoading, isOfficer]);
+  }, [authLoading, isGovernment]);
 
   // Load fields when a document is selected
   useEffect(() => {
@@ -227,29 +232,30 @@ export default function AdminDashboardPage() {
   if (!authLoading && !user) {
     return (
       <div>
-        <Breadcrumb items={[{ label: "Admin Console" }]} />
+        <Breadcrumb items={[{ label: "Government Portal" }]} />
         <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-4">
-          <div className="w-14 h-14 bg-amber-100 text-amber-800 rounded-full flex items-center justify-center mx-auto border border-amber-300">
+          <div className="w-14 h-14 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center mx-auto border border-blue-300">
             <Lock className="w-7 h-7" />
           </div>
           <h1 className="text-xl font-black text-gray-900 uppercase tracking-tight">
-            Protected Admin Route — Authentication Required
+            Government Portal — Authentication Required
           </h1>
           <p className="text-xs text-gray-600 leading-relaxed">
-            This administration console allows modifying document statuses, editing field data in the database, and managing users. You must log in with an Administrator or Officer account to proceed.
+            This portal is for authorized government staff only. Sign in with your assigned government credentials. Your role determines what you can access.
           </p>
 
           <div className="p-4 bg-slate-50 border border-slate-300 rounded text-left space-y-2 text-xs">
-            <p className="font-bold text-gray-800">Use Seeded Dummy Credentials:</p>
+            <p className="font-bold text-gray-800">Demo Government Credentials:</p>
             <div className="font-mono text-[11px] space-y-1 text-gray-700">
-              <p>👑 <strong>Admin:</strong> admin / admin123 (Full control)</p>
-              <p>🎖️ <strong>Officer:</strong> officer1 / officer123 (Audit & field edits)</p>
+              {GOVERNMENT_ACCOUNTS.map((a) => (
+                <p key={a.username}>• <strong>{a.username}</strong> / {a.password} ({a.role})</p>
+              ))}
             </div>
           </div>
 
           <Link
             href="/login"
-            className="inline-flex items-center gap-2 px-6 py-2.5 bg-amber-700 hover:bg-amber-800 text-white rounded font-bold uppercase tracking-wider text-xs shadow-sm transition"
+            className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-800 hover:bg-blue-900 text-white rounded font-bold uppercase tracking-wider text-xs shadow-sm transition"
           >
             <KeyRound className="w-4 h-4" />
             <span>Go to Login Page</span>
@@ -259,35 +265,36 @@ export default function AdminDashboardPage() {
     );
   }
 
-  // Guard: Citizen / User role without admin rights
-  if (!authLoading && user && !isOfficer) {
+  // Guard: Citizen / User role — redirect to citizen portal
+  if (!authLoading && user && !isGovernment) {
     return (
       <div>
-        <Breadcrumb items={[{ label: "Admin Console" }]} />
+        <Breadcrumb items={[{ label: "Government Portal" }]} />
         <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-4">
           <div className="w-14 h-14 bg-rose-100 text-rose-800 rounded-full flex items-center justify-center mx-auto border border-rose-300">
             <AlertCircle className="w-7 h-7" />
           </div>
           <h1 className="text-xl font-black text-gray-900 uppercase tracking-tight">
-            Access Restricted: Role Insufficient
+            Citizen Account — Wrong Portal
           </h1>
           <p className="text-xs text-gray-600 leading-relaxed">
-            You are currently logged in as <strong className="font-mono">{user.username}</strong> with role <strong className="font-mono text-rose-700 uppercase">[{user.role}]</strong>. Only users with <strong className="font-mono">ADMIN</strong> or <strong className="font-mono">OFFICER</strong> roles can edit records in this console.
+            You are signed in as <strong className="font-mono">{user.username}</strong> (role:{" "}
+            <strong className="font-mono text-rose-700 uppercase">{user.role}</strong>). This is the Government Portal. Citizens should use the Citizen dashboard.
           </p>
 
           <div className="pt-2 flex justify-center gap-3">
-            <button
-              onClick={logout}
-              className="px-4 py-2 bg-amber-700 hover:bg-amber-800 text-white font-bold rounded text-xs"
-            >
-              Switch to Admin Account
-            </button>
             <Link
               href="/dashboard"
+              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded text-xs"
+            >
+              Go to Citizen Dashboard
+            </Link>
+            <button
+              onClick={logout}
               className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold rounded text-xs border border-gray-300"
             >
-              Return to Public Dashboard
-            </Link>
+              Sign Out
+            </button>
           </div>
         </div>
       </div>
@@ -298,36 +305,45 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="pb-12">
-      <Breadcrumb items={[{ label: "Admin Console & Database Manager" }]} />
+      <Breadcrumb items={[{ label: "Government Portal — Land Administration Console" }]} />
 
       <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-6">
-        {/* Admin Header with Role Pill & Credentials Callout */}
-        <div className="bg-slate-900 text-white rounded-md p-4 sm:p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-4 border-l-amber-500">
+        {/* Government Portal Header */}
+        <div className="bg-slate-900 text-white rounded-md p-4 sm:p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-4 border-l-blue-500">
           <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="text-xs bg-amber-500 text-slate-950 font-bold px-2 py-0.5 rounded font-mono uppercase">
-                {user?.role} Mode Active
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`text-xs font-bold px-2 py-0.5 rounded font-mono uppercase ${
+                user?.role === "ADMIN" ? "bg-purple-500 text-white" :
+                user?.role === "OFFICER" ? "bg-blue-500 text-white" :
+                "bg-amber-500 text-slate-950"
+              }`}>
+                {user?.role}
               </span>
-              <span className="text-xs text-slate-400">|</span>
-              <span className="text-xs text-emerald-400 font-mono flex items-center gap-1">
-                <Check className="w-3.5 h-3.5" /> Database Write Access Enabled
-              </span>
+              <span className="text-xs text-slate-400">Government Portal</span>
+              {canManageDocuments && (
+                <span className="text-xs text-emerald-400 font-mono flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5" /> Portal Access Active
+                </span>
+              )}
             </div>
             <h1 className="text-lg sm:text-xl font-extrabold uppercase tracking-tight">
-              Administrative Control Console
+              Land Administration Console
             </h1>
             <p className="text-xs text-slate-300">
-              Authenticated Operator: <strong className="text-white">{user?.full_name || user?.username}</strong> ({user?.username})
+              Signed in as: <strong className="text-white">{user?.full_name || user?.username}</strong> &nbsp;·&nbsp;
+              {user?.role === "ADMIN" && "Full admin access — all modules"}
+              {user?.role === "OFFICER" && "Revenue Officer — Operations, Land Admin & GIS"}
+              {user?.role === "VERIFIER" && "Patwari / Verifier — Verification queue access"}
             </p>
           </div>
 
-          {/* Dummy Credentials Reference Banner */}
+          {/* Credentials Reference */}
           <div className="bg-slate-800/90 border border-slate-700 rounded p-3 text-[11px] space-y-1 shrink-0">
-            <p className="font-bold text-amber-400 uppercase tracking-wide">Dummy Credentials Reference:</p>
+            <p className="font-bold text-amber-400 uppercase tracking-wide">Government Demo Accounts:</p>
             <div className="font-mono text-slate-300 space-y-0.5">
-              <p>Admin: <strong className="text-white">admin</strong> / <strong className="text-white">admin123</strong> (Role: ADMIN)</p>
-              <p>Officer: <strong className="text-white">officer1</strong> / <strong className="text-white">officer123</strong> (Role: OFFICER)</p>
-              <p>Verifier: <strong className="text-white">verifier1</strong> / <strong className="text-white">verifier123</strong> (Role: VERIFIER)</p>
+              {GOVERNMENT_ACCOUNTS.map((a) => (
+                <p key={a.username}><strong className="text-white">{a.username}</strong> / {a.password} ({a.role})</p>
+              ))}
             </div>
             <button
               onClick={logout}
@@ -409,45 +425,60 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* View Tabs */}
-        <div className="flex items-center gap-2 border-b border-gray-200 text-xs font-bold">
+        {/* Role-Aware View Tabs */}
+        <div className="flex items-center gap-1 border-b border-gray-200 text-xs font-bold overflow-x-auto">
+          {/* Analytics — all government roles */}
           <button
             onClick={() => setActiveTab("analytics")}
-            className={`px-4 py-2 border-b-2 transition flex items-center gap-1.5 ${
+            className={`px-4 py-2.5 border-b-2 transition flex items-center gap-1.5 whitespace-nowrap ${
               activeTab === "analytics"
-                ? "border-amber-700 text-amber-800 bg-white rounded-t"
+                ? "border-blue-700 text-blue-800 bg-white rounded-t"
                 : "border-transparent text-gray-600 hover:text-gray-900"
             }`}
           >
             <BarChart3 className="w-4 h-4" />
-            <span>Visual Analytics & Graphs</span>
+            <span>📊 Analytics & Overview</span>
           </button>
 
-          <button
-            onClick={() => setActiveTab("documents")}
-            className={`px-4 py-2 border-b-2 transition flex items-center gap-1.5 ${
-              activeTab === "documents"
-                ? "border-amber-700 text-amber-800 bg-white rounded-t"
-                : "border-transparent text-gray-600 hover:text-gray-900"
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            <span>Land Documents & Extracted Fields ({documents.length})</span>
-          </button>
+          {/* Operations — all government roles (upload, OCR, verify) */}
+          {canManageDocuments && (
+            <button
+              onClick={() => setActiveTab("documents")}
+              className={`px-4 py-2.5 border-b-2 transition flex items-center gap-1.5 whitespace-nowrap ${
+                activeTab === "documents"
+                  ? "border-blue-700 text-blue-800 bg-white rounded-t"
+                  : "border-transparent text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              <FileText className="w-4 h-4" />
+              <span>📄 Operations ({documents.length})</span>
+            </button>
+          )}
 
-          {isAdmin && (
+          {/* System — ADMIN only */}
+          {canManageUsers && (
             <button
               onClick={() => setActiveTab("users")}
-              className={`px-4 py-2 border-b-2 transition flex items-center gap-1.5 ${
+              className={`px-4 py-2.5 border-b-2 transition flex items-center gap-1.5 whitespace-nowrap ${
                 activeTab === "users"
-                  ? "border-amber-700 text-amber-800 bg-white rounded-t"
+                  ? "border-blue-700 text-blue-800 bg-white rounded-t"
                   : "border-transparent text-gray-600 hover:text-gray-900"
               }`}
             >
               <UserCheck className="w-4 h-4" />
-              <span>Registered Users & Roles ({usersList.length})</span>
+              <span>⚙️ System &amp; Users ({usersList.length})</span>
             </button>
           )}
+
+          {/* Role indicator pill */}
+          <div className="ml-auto pr-1 flex items-center gap-1.5 shrink-0">
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase ${
+              user?.role === "ADMIN" ? "bg-purple-100 text-purple-800 border-purple-300" :
+              user?.role === "OFFICER" ? "bg-blue-100 text-blue-800 border-blue-300" :
+              "bg-amber-100 text-amber-800 border-amber-300"
+            }`}>{user?.role}</span>
+            <span className="text-[10px] text-gray-400">access level</span>
+          </div>
         </div>
 
         {/* Tab 1: Visual Graphs and Analytics */}

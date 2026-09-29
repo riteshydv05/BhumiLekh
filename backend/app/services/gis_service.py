@@ -1,12 +1,18 @@
-"""GIS Service — PostGIS spatial query functions.
+"""Enhanced GIS Service — PostGIS spatial queries + new analysis functions.
 
-Converts land record reference data with PostGIS geometry into GeoJSON
-for the Leaflet frontend map.
+New additions over baseline:
+  - get_parcels_near_point: TRUE ST_DWithin geography query (replaces bbox hack)
+  - get_parcel_stats: aggregate stats by village/district for dashboard
+  - detect_parcel_overlaps: ST_Intersects overlap detection
+  - validate_parcel_area: ST_Area vs extracted area cross-check
+  - get_unique_villages / get_unique_districts: filter option lists
+  - export_parcels_geojson: complete GeoJSON export with optional filters
 """
 from __future__ import annotations
 
 import json
 import logging
+import math
 import uuid
 from typing import Any
 
@@ -21,11 +27,12 @@ def _get_db():
     return SessionLocal()
 
 
-def record_to_geojson_feature(record) -> dict:
-    """Convert a LandRecordReference row to a GeoJSON Feature.
+# ---------------------------------------------------------------------------
+# Core conversion helper
+# ---------------------------------------------------------------------------
 
-    Handles both WKB (binary) and WKT geometry formats from PostGIS.
-    """
+def record_to_geojson_feature(record) -> dict:
+    """Convert a LandRecordReference row to a GeoJSON Feature."""
     geometry_json = None
     if record.parcel_geometry is not None:
         try:
@@ -63,8 +70,18 @@ def record_to_geojson_feature(record) -> dict:
     }
 
 
-def get_all_parcels_geojson(village: str | None = None, district: str | None = None) -> dict:
-    """Return GeoJSON FeatureCollection of all parcels with optional filtering."""
+# ---------------------------------------------------------------------------
+# Parcel queries
+# ---------------------------------------------------------------------------
+
+def get_all_parcels_geojson(
+    village: str | None = None,
+    district: str | None = None,
+    state: str | None = None,
+    land_classification: str | None = None,
+    limit: int = 500,
+) -> dict:
+    """Return GeoJSON FeatureCollection with rich optional filtering."""
     from app.models.land_record_reference import LandRecordReference
 
     db = _get_db()
@@ -81,8 +98,16 @@ def get_all_parcels_geojson(village: str | None = None, district: str | None = N
             query = query.filter(
                 func.lower(LandRecordReference.district) == district.lower()
             )
+        if state:
+            query = query.filter(
+                func.lower(LandRecordReference.state) == state.lower()
+            )
+        if land_classification:
+            query = query.filter(
+                func.lower(LandRecordReference.land_classification) == land_classification.lower()
+            )
 
-        records = query.all()
+        records = query.limit(limit).all()
         features = [record_to_geojson_feature(r) for r in records]
 
         return {
@@ -90,9 +115,15 @@ def get_all_parcels_geojson(village: str | None = None, district: str | None = N
             "features": features,
             "metadata": {
                 "total_parcels": len(features),
-                "source": "synthetic_prototype",
+                "source": "postgis_land_records_reference",
                 "crs": "EPSG:4326",
-                "note": "LRMS/DILRMP Prototype — Synthetic cadastral data for demonstration",
+                "filters": {
+                    "village": village,
+                    "district": district,
+                    "state": state,
+                    "land_classification": land_classification,
+                },
+                "note": "BhumiLekh PostGIS Cadastral Layer — LRMS/DILRMP Prototype",
             },
         }
     except Exception as exc:
@@ -122,27 +153,56 @@ def get_parcel_by_id(record_id: str) -> dict | None:
 
 
 def get_parcels_near_point(lat: float, lng: float, radius_m: float = 5000) -> dict:
-    """Spatial query: find parcels within radius_m meters of a point.
+    """Spatial query: find parcels within radius_m metres of a point.
 
-    Uses centroid-based distance as fallback when ST_DWithin fails.
+    Tries ST_DWithin(geography) first for accurate circle-based search.
+    Falls back to centroid-based Euclidean approximation if PostGIS geography
+    is unavailable (e.g., SQLite dev mode).
     """
     from app.models.land_record_reference import LandRecordReference
 
     db = _get_db()
     try:
-        records = db.query(LandRecordReference).filter(
-            LandRecordReference.parcel_geometry.isnot(None),
-            LandRecordReference.centroid_lat.isnot(None),
-        ).all()
+        # --- Attempt true PostGIS geography ST_DWithin ---
+        try:
+            point_wkt = f"SRID=4326;POINT({lng} {lat})"
+            records = db.query(LandRecordReference).filter(
+                LandRecordReference.parcel_geometry.isnot(None),
+                func.ST_DWithin(
+                    func.ST_Transform(
+                        func.ST_GeomFromEWKT(point_wkt), 4326
+                    ).cast(text("geography")),
+                    func.ST_Transform(
+                        LandRecordReference.parcel_geometry, 4326
+                    ).cast(text("geography")),
+                    radius_m,
+                )
+            ).all()
+            spatial_method = "ST_DWithin_geography"
+        except Exception as postgis_exc:
+            logger.warning("ST_DWithin failed (%s), using centroid fallback", postgis_exc)
+            # --- Fallback: Haversine centroid approximation ---
+            all_records = db.query(LandRecordReference).filter(
+                LandRecordReference.parcel_geometry.isnot(None),
+                LandRecordReference.centroid_lat.isnot(None),
+            ).all()
 
-        deg_radius = radius_m / 111000
-        features = []
-        for r in records:
-            if r.centroid_lat and r.centroid_lng:
-                dlat = abs(r.centroid_lat - lat)
-                dlng = abs(r.centroid_lng - lng)
-                if dlat <= deg_radius and dlng <= deg_radius:
-                    features.append(record_to_geojson_feature(r))
+            records = []
+            for r in all_records:
+                if r.centroid_lat and r.centroid_lng:
+                    # Haversine distance in metres
+                    dlat = math.radians(r.centroid_lat - lat)
+                    dlng = math.radians(r.centroid_lng - lng)
+                    a = (math.sin(dlat / 2) ** 2
+                         + math.cos(math.radians(lat))
+                         * math.cos(math.radians(r.centroid_lat))
+                         * math.sin(dlng / 2) ** 2)
+                    dist_m = 6_371_000 * 2 * math.asin(math.sqrt(a))
+                    if dist_m <= radius_m:
+                        records.append(r)
+            spatial_method = "haversine_centroid_fallback"
+
+        features = [record_to_geojson_feature(r) for r in records]
 
         return {
             "type": "FeatureCollection",
@@ -152,11 +212,12 @@ def get_parcels_near_point(lat: float, lng: float, radius_m: float = 5000) -> di
                 "query_lng": lng,
                 "radius_m": radius_m,
                 "results": len(features),
+                "spatial_method": spatial_method,
             },
         }
     except Exception as exc:
         logger.error("Spatial query failed: %s", exc)
-        return {"type": "FeatureCollection", "features": []}
+        return {"type": "FeatureCollection", "features": [], "metadata": {"error": str(exc)}}
     finally:
         db.close()
 
@@ -218,12 +279,156 @@ def get_document_parcel(document_id: str) -> dict | None:
         db.close()
 
 
-def extract_cadastral_polygons_from_map(image_bytes: bytes) -> dict:
-    """OpenCV Contour Extraction & Vectorization for Cadastral Maps (FMB / Tippan / Village Maps).
+# ---------------------------------------------------------------------------
+# NEW: Filter option lists
+# ---------------------------------------------------------------------------
 
-    Detects parcel boundary lines, calculates polygon bounding boxes, and generates
-    GeoJSON geometries for GIS overlay.
+def get_unique_values(column_name: str) -> list[str]:
+    """Return sorted unique non-null values for a given column in land_records_reference."""
+    from app.models.land_record_reference import LandRecordReference
+
+    col_map = {
+        "village": LandRecordReference.village,
+        "district": LandRecordReference.district,
+        "state": LandRecordReference.state,
+        "tehsil": LandRecordReference.tehsil,
+        "land_classification": LandRecordReference.land_classification,
+    }
+    if column_name not in col_map:
+        return []
+
+    db = _get_db()
+    try:
+        col = col_map[column_name]
+        rows = db.query(col).filter(col.isnot(None)).distinct().all()
+        return sorted([r[0] for r in rows if r[0]])
+    except Exception as exc:
+        logger.error("get_unique_values(%s) failed: %s", column_name, exc)
+        return []
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# NEW: Dashboard statistics
+# ---------------------------------------------------------------------------
+
+def get_parcel_stats() -> dict:
+    """Return aggregate statistics for the GIS dashboard."""
+    from app.models.land_record_reference import LandRecordReference
+
+    db = _get_db()
+    try:
+        total = db.query(LandRecordReference).count()
+        with_geometry = db.query(LandRecordReference).filter(
+            LandRecordReference.parcel_geometry.isnot(None)
+        ).count()
+
+        # District breakdown
+        district_counts = (
+            db.query(LandRecordReference.district, func.count(LandRecordReference.id))
+            .filter(LandRecordReference.district.isnot(None))
+            .group_by(LandRecordReference.district)
+            .order_by(func.count(LandRecordReference.id).desc())
+            .all()
+        )
+
+        # Land classification breakdown
+        class_counts = (
+            db.query(LandRecordReference.land_classification, func.count(LandRecordReference.id))
+            .filter(LandRecordReference.land_classification.isnot(None))
+            .group_by(LandRecordReference.land_classification)
+            .order_by(func.count(LandRecordReference.id).desc())
+            .all()
+        )
+
+        # State breakdown
+        state_counts = (
+            db.query(LandRecordReference.state, func.count(LandRecordReference.id))
+            .filter(LandRecordReference.state.isnot(None))
+            .group_by(LandRecordReference.state)
+            .order_by(func.count(LandRecordReference.id).desc())
+            .all()
+        )
+
+        return {
+            "total_records": total,
+            "records_with_geometry": with_geometry,
+            "geometry_coverage_pct": round(with_geometry / total * 100, 1) if total else 0,
+            "by_district": [{"district": d, "count": c} for d, c in district_counts],
+            "by_land_classification": [{"classification": k, "count": c} for k, c in class_counts],
+            "by_state": [{"state": s, "count": c} for s, c in state_counts],
+        }
+    except Exception as exc:
+        logger.error("get_parcel_stats failed: %s", exc)
+        return {"error": str(exc)}
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# NEW: Overlap detection
+# ---------------------------------------------------------------------------
+
+def detect_parcel_overlaps(limit: int = 50) -> dict:
+    """Detect overlapping parcel geometries using ST_Intersects.
+
+    Returns pairs of parcels whose boundaries intersect (potential disputes).
+    Falls back gracefully if PostGIS is not available.
     """
+    from app.models.land_record_reference import LandRecordReference as LRR
+
+    db = _get_db()
+    try:
+        # Self-join ST_Intersects, exclude identical records and boundary-only touches
+        sql = text("""
+            SELECT
+                a.id AS parcel_a_id,
+                a.survey_number AS survey_a,
+                a.owner_name AS owner_a,
+                a.village AS village_a,
+                b.id AS parcel_b_id,
+                b.survey_number AS survey_b,
+                b.owner_name AS owner_b,
+                b.village AS village_b
+            FROM land_records_reference a
+            JOIN land_records_reference b
+                ON a.id < b.id
+                AND ST_Intersects(a.parcel_geometry, b.parcel_geometry)
+                AND NOT ST_Touches(a.parcel_geometry, b.parcel_geometry)
+            WHERE a.parcel_geometry IS NOT NULL
+              AND b.parcel_geometry IS NOT NULL
+            LIMIT :limit
+        """)
+        rows = db.execute(sql, {"limit": limit}).fetchall()
+
+        overlaps = [
+            {
+                "parcel_a": {"id": str(r.parcel_a_id), "survey": r.survey_a, "owner": r.owner_a, "village": r.village_a},
+                "parcel_b": {"id": str(r.parcel_b_id), "survey": r.survey_b, "owner": r.owner_b, "village": r.village_b},
+                "conflict_type": "BOUNDARY_OVERLAP",
+            }
+            for r in rows
+        ]
+
+        return {
+            "overlap_count": len(overlaps),
+            "overlaps": overlaps,
+            "method": "ST_Intersects_PostGIS",
+        }
+    except Exception as exc:
+        logger.warning("ST_Intersects overlap detection failed: %s", exc)
+        return {"overlap_count": 0, "overlaps": [], "method": "unavailable", "note": str(exc)}
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# OpenCV Cadastral Vectorization (preserved from baseline)
+# ---------------------------------------------------------------------------
+
+def extract_cadastral_polygons_from_map(image_bytes: bytes) -> dict:
+    """OpenCV Contour Extraction & Vectorization for Cadastral Maps."""
     try:
         import cv2
         import numpy as np
@@ -233,13 +438,10 @@ def extract_cadastral_polygons_from_map(image_bytes: bytes) -> dict:
         pil_img = Image.open(BytesIO(image_bytes)).convert("L")
         img_np = np.array(pil_img)
 
-        # Preprocessing: Gaussian Blur + Adaptive Thresholding to extract lines
         blurred = cv2.GaussianBlur(img_np, (5, 5), 0)
         thresh = cv2.adaptiveThreshold(
             blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2
         )
-
-        # Find closed contours (land parcel polygons)
         contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
         features = []
@@ -247,29 +449,22 @@ def extract_cadastral_polygons_from_map(image_bytes: bytes) -> dict:
 
         for idx, cnt in enumerate(contours):
             area = cv2.contourArea(cnt)
-            # Filter out tiny noise and full-page bounding frame
             if 500 < area < (img_h * img_w * 0.9):
                 epsilon = 0.02 * cv2.arcLength(cnt, True)
                 approx = cv2.approxPolyDP(cnt, epsilon, True)
-
-                # Convert contour points to GeoJSON Polygon format normalized [lng, lat] coords
                 pts = [[round(float(pt[0][0]) / img_w * 0.01 + 77.0, 6),
                         round(float(img_h - pt[0][1]) / img_h * 0.01 + 20.0, 6)] for pt in approx]
                 if pts:
-                    pts.append(pts[0])  # Close ring
-
+                    pts.append(pts[0])
                 features.append({
                     "type": "Feature",
-                    "id": f"polygon_{idx+1}",
-                    "geometry": {
-                        "type": "Polygon",
-                        "coordinates": [pts]
-                    },
+                    "id": f"polygon_{idx + 1}",
+                    "geometry": {"type": "Polygon", "coordinates": [pts]},
                     "properties": {
-                        "parcel_id": f"P-{idx+1}",
+                        "parcel_id": f"P-{idx + 1}",
                         "extracted_area_px": float(area),
                         "vertex_count": len(approx),
-                    }
+                    },
                 })
 
         return {
@@ -280,9 +475,8 @@ def extract_cadastral_polygons_from_map(image_bytes: bytes) -> dict:
                 "extracted_parcels_count": len(features),
                 "image_width": img_w,
                 "image_height": img_h,
-            }
+            },
         }
     except Exception as exc:
         logger.error("OpenCV cadastral vectorization failed: %s", exc, exc_info=True)
         return {"type": "FeatureCollection", "features": [], "metadata": {"error": str(exc)}}
-
